@@ -1,0 +1,245 @@
+/**
+ * 英语常用词表（基于牛津3000核心词汇简化版）
+ * 按频率等级划分：
+ *   A1 (~500词): 最基础的日常词汇
+ *   A2 (~500词): 基础交流词汇
+ *   B1 (~500词): 中级词汇
+ *   B2+ 以上的词不在此列表中，视为进阶/高级词汇
+ */
+
+// A1 级别：最基础的500个高频词
+const A1_WORDS = new Set([
+  'a','about','above','after','again','all','also','am','an','and','any','are',
+  'as','at','back','be','because','been','before','big','but','by','call','came',
+  'can','come','could','day','did','do','does','down','each','end','even','every',
+  'few','find','first','for','from','get','give','go','going','good','got','great',
+  'had','has','have','he','her','here','him','his','how','i','if','in','into','is',
+  'it','its','just','know','last','let','life','like','little','long','look','made',
+  'make','man','many','may','me','more','most','much','must','my','name','new',
+  'no','not','now','number','of','off','old','on','one','only','or','other','our',
+  'out','over','own','part','people','place','put','right','said','same','say','see',
+  'she','should','show','small','so','some','still','such','take','tell','than',
+  'that','the','their','them','then','there','these','they','thing','think','this',
+  'those','three','through','time','to','too','turn','two','under','up','us','use',
+  'very','want','was','water','way','we','well','went','were','what','when','where',
+  'which','while','who','why','will','with','word','work','world','would','write',
+  'year','you','your','able','after','again','age','ago','air','along','already',
+  'always','another','answer','any','area','around','ask','away','bad','beautiful',
+  'begin','being','believe','between','black','blue','body','book','both','boy',
+  'bring','build','bus','buy','car','carry','case','change','child','children',
+  'city','class','close','cold','color','colour','country','course','cut','dark',
+  'daughter','dead','dear','decide','deep','different','difficult','dinner','door',
+  'drive','during','early','earth','east','eat','eight','else','enough','example',
+  'eye','face','fact','fall','family','far','fast','father','feel','fight','five',
+  'floor','follow','food','foot','four','free','friend','front','full','fun','game',
+  'garden','girl','glad','glass','gold','gone','green','ground','group','grow',
+  'half','hand','happen','happy','hard','hat','head','hear','heart','heavy','help',
+  'high','hill','hold','home','hope','hot','hotel','hour','house','hundred','idea',
+  'important','job','join','keep','kind','king','land','large','late','laugh','lead',
+  'learn','leave','left','less','letter','light','line','list','listen','live',
+  'love','low','lunch','main','map','market','matter','mean','meet','might','mind',
+  'minute','miss','moment','money','month','moon','morning','mother','move','movie',
+  'music','near','need','never','next','nice','night','nine','north','nothing',
+  'often','oh','ok','okay','open','order','page','paper','parent','party','pass',
+  'past','pay','perhaps','person','picture','plan','play','please','point','power',
+  'problem','programme','program','pull','question','quite','rain','read','ready',
+  'real','red','remember','rest','return','rich','ride','road','room','round','run',
+  'school','sea','second','seem','sell','send','service','set','seven','several',
+  'short','sit','six','sleep','snow','son','soon','sorry','south','speak','spend',
+  'stand','start','state','stay','stop','story','street','strong','student','study',
+  'sun','sure','system','table','talk','tea','teach','team','ten','test','thank',
+  'think','today','together','tomorrow','tonight','top','town','travel','tree','true',
+  'try','twelve','twenty','type','understand','until','visit','voice','wait','walk',
+  'wall','watch','week','west','white','whole','win','window','without','woman',
+  'women','wonder','word','work','write','wrong','yellow','yes','yesterday','young',
+  'zero',
+]);
+
+// A2 级别词汇
+const A2_WORDS = new Set([
+  'accept','accident','account','achieve','across','act','action','activity','actual',
+  'add','address','admit','adult','advance','advantage','advice','afford','afraid',
+  'afternoon','against','agree','ahead','aim','allow','almost','alone','among',
+  'amount','ancient','angry','animal','announce','apart','appear','apple','apply',
+  'argument','arm','army','arrange','arrive','art','article','attack','attempt',
+  'attention','aunt','autumn','available','average','avoid','awake','award','aware',
+  'baby','basic','bath','battle','beach','bear','beat','become','bed','beer','bell',
+  'belong','below','beside','best','better','beyond','bill','bird','birth','bit',
+  'bite','block','blood','blow','board','boat','bone','born','boss','bottom','brain',
+  'brave','bread','break','breakfast','breath','bridge','bright','brother','brown',
+  'burn','business','busy','butter','cake','calm','camp','capital','captain','card',
+  'care','careful','catch','cause','celebrate','cent','center','centre','central',
+  'century','certain','chair','chance','character','charge','cheap','check','cheese',
+  'chicken','chief','choice','choose','church','circle','citizen','claim','clean',
+  'clear','climb','clock','clothes','cloud','club','coast','coffee','collect','college',
+  'comment','common','community','company','compare','complete','computer','concern',
+  'condition','connect','consider','contain','continue','control','conversation','cook',
+  'cool','copy','corner','correct','cost','count','couple','cover','create','cross',
+  'crowd','cry','culture','cup','current','customer','daily','damage','dance','danger',
+  'dangerous','data','date','deal','death','debate','deep','degree','demand','depend',
+  'describe','design','desk','detail','develop','development','die','difference',
+  'direct','direction','dirty','discover','discuss','discussion','dish','distance',
+  'divide','doctor','document','dog','dollar','double','doubt','draw','dream','dress',
+  'drink','drop','dry','due','ear','earn','education','effect','effort','egg','either',
+  'election','empty','encourage','enemy','energy','engine','enjoy','enter','entire',
+  'environment','equal','escape','especially','establish','evening','event','everybody',
+  'everyone','everything','evidence','evil','exact','exactly','exam','examination',
+  'excellent','except','exchange','excite','exciting','excuse','exercise','exist',
+  'expect','experience','experiment','explain','express','expression','extra','extreme',
+  'fail','fair','faith','famous','farm','fat','fault','favorite','favourite','fear',
+  'feature','feed','field','figure','fill','film','final','finally','finance','finger',
+  'finish','fire','fish','fit','fix','flat','flight','flow','flower','fly','force',
+  'foreign','forest','forget','form','formal','former','forward','fourth','frame',
+  'fresh','fruit','fuel','function','future','gain','general','generation','gentle',
+  'gift','goal','god','gonna','government','grade','grand','grass','gray','grey',
+  'guess','guide','gun','guy','hair','hang','human','husband','ice','ignore','image',
+  'imagine','immediate','immediately','impact','improve','include','increase','indeed',
+  'independent','indicate','individual','industry','influence','information','inside',
+  'instead','interest','interview','introduce','invest','involve','island','issue',
+  'item','judge','jump','justice','key','kick','kid','kill','kitchen','knee','knife',
+  'knowledge','lack','lady','lake','language','lay','leg','legal','level','library',
+  'lie','likely','limit','link','lip','load','local','lose','loss','lot','loud',
+  'lower','luck','machine','magazine','magic','major','manage','manager','mark',
+  'match','material','maybe','meal','measure','media','medical','medicine','member',
+  'memory','mention','message','method','middle','military','milk','million','model',
+  'modern','movement','Mr','Mrs','Ms','museum','nation','national','natural','nature',
+  'necessary','neck','negative','neighbour','network','news','newspaper','nobody',
+  'noise','none','nor','normal','note','notice','object','obvious','occasion','occur',
+  'offer','office','officer','official','oil','operate','operation','opinion',
+  'opportunity','opposite','option','orange','ordinary','organization','original',
+  'otherwise','outside','pain','pair','park','particular','partner','passenger',
+  'path','patient','pattern','peace','perfect','perform','performance','period',
+  'permit','phone','photograph','physical','pick','piece','pink','pipe','planet',
+  'plant','plate','pleasure','plenty','pocket','poem','poetry','police','policy',
+  'political','politics','pool','poor','popular','population','position','positive',
+  'possible','post','potato','pound','practice','prefer','prepare','present',
+  'president','press','pressure','pretty','prevent','previous','price','prince',
+  'princess','principle','print','prison','private','prize','probably','process',
+  'produce','product','production','professional','professor','progress','project',
+  'promise','protect','prove','provide','public','publish','purpose','push','quarter',
+  'queen','quick','quiet','race','radio','raise','range','rate','reach','react',
+  'realize','reason','receive','recent','recently','recognize','record','reduce',
+  'reflect','refuse','regard','region','relate','relation','relationship','release',
+  'remain','remove','repeat','replace','report','represent','request','require',
+  'research','resource','respect','respond','response','responsible','result',
+  'review','ring','rise','risk','river','rock','role','rose','row','royal','rule',
+  'safe','save','scene','science','score','screen','search','season','seat','secret',
+  'section','security','seek','select','sense','sentence','separate','serious','serve',
+  'settle','shape','share','sharp','ship','shoe','shoot','shop','shoulder','shout',
+  'shut','sick','side','sign','signal','silence','silly','similar','simple','since',
+  'sing','single','sister','situation','skill','skin','sky','smile','smoke','social',
+  'society','soft','soldier','solution','somebody','somehow','someone','something',
+  'sometimes','somewhere','song','sort','soul','sound','source','space','special',
+  'speech','speed','spirit','sport','spot','spread','spring','square','stage','star',
+  'step','stick','stone','store','storm','straight','strange','strategy','strike',
+  'structure','stuff','stupid','subject','succeed','success','successful','suddenly',
+  'suffer','suggest','summer','supply','support','suppose','surprise','surround',
+  'sweet','swim','symbol','taste','tax','technology','television','temperature',
+  'terrible','text','thin','throw','ticket','tie','tight','tiny','title','today',
+  'tomorrow','tonight','tool','total','touch','tough','tour','toward','towards',
+  'track','trade','tradition','traditional','traffic','train','training','transport',
+  'treat','trouble','trust','truth','twice','ugly','uncle','union','unit','united',
+  'university','unless','valley','value','variety','various','vehicle','video','view',
+  'village','violence','warm','warn','wash','waste','weak','weapon','wear','weather',
+  'website','wedding','weight','welcome','wife','wild','wing','winter','wish','wood',
+  'worried','worry','worse','worst','worth','yard','yeah',
+]);
+
+// B1 级别词汇
+const B1_WORDS = new Set([
+  'abandon','absolutely','absorb','abstract','abuse','academic','accomplish',
+  'accurate','accuse','acquisition','adapt','adequate','adjust','administration',
+  'admire','adopt','advocate','aesthetic','aggressive','agriculture','aide',
+  'alcohol','allegation','alliance','alongside','alter','alternative','ambassador',
+  'amend','analyst','analyze','analyse','ancestor','anger','angle','annual',
+  'anticipate','anxiety','anxious','apparent','appetite','appreciation','appropriate',
+  'approval','approve','approximately','arbitrary','arena','arise','assembly',
+  'assess','assessment','asset','assign','assist','assistance','associate',
+  'association','assume','assumption','assure','athletic','atmosphere','attach',
+  'attribute','authority','auto','automatic','automobile','overall','barrier',
+  'basis','behalf','bench','bend','beneath','bet','biological','bishop','blade',
+  'blame','blank','blast','blend','blind','blow','bond','boom','boost','boundary',
+  'bracket','brand','brass','breakdown','breast','breed','briefly','broad',
+  'broadcast','broker','brush','buck','buddy','budget','bug','bulk','burden',
+  'bureau','cabin','cable','calculate','calendar','campaign','candidate','capable',
+  'capacity','capture','carbon','career','cargo','cast','casual','category',
+  'cattle','cease','ceiling','chain','challenge','chamber','champion','channel',
+  'chapter','charity','chart','chemistry','chest','childhood','chip','chronic',
+  'chunk','circumstance','cite','civilian','civilization','clause','clinic',
+  'clinical','cloth','coalition','cognitive','collapse','colleague','collective',
+  'colonial','colony','column','combat','combine','comedy','comfort','commander',
+  'commission','commit','commitment','committee','communicate','companion',
+  'compensation','compete','competition','competitive','competitor','compile',
+  'complain','complaint','complement','complex','complexity','component','compose',
+  'composition','comprehensive','compromise','concentrate','concentration',
+  'concept','conclude','conclusion','concrete','conduct','conference','confidence',
+  'confident','confine','confirm','conflict','confront','confusion','congress',
+  'congressional','consciousness','consensus','consequence','conservative',
+  'considerable','consist','consistent','constant','constitute','constitutional',
+  'construct','construction','consultant','consume','consumer','consumption',
+  'contact','contemporary','content','contest','context','contract','contrast',
+  'contribute','contribution','controversial','controversy','convention',
+  'conventional','convert','conviction','convince','cooperate','cooperation',
+  'coordinate','cope','core','corporate','corporation','correspond','correspondent',
+  'cotton','counter','coverage','crack','craft','crash','crazy','cream','creation',
+  'creative','creature','credit','crew','criminal','crisis','criteria','critic',
+  'critical','criticism','crop','crucial','crush','cure','curiosity','curious',
+  'curriculum','curve','cycle','database','deadline','debate','deck','declaration',
+  'declare','decline','decrease','deed','defeat','defend','defendant','defense',
+  'defensive','deficit','define','definition','deliberately','democracy','democratic',
+  'demonstrate','demonstration','deny','departure','deposit','depression','deputy',
+  'derive','desert','deserve','desperate','destruction','detect','determine',
+  'device','devote','dialogue','diet','dimension','dinosaur','diplomatic','disability',
+  'disagree','disappear','disappoint','disaster','discipline','discourse','discrimination',
+  'dismiss','disorder','display','dispute','distinct','distinction','distinguish',
+  'distribute','distribution','district','diverse','diversity','documentation',
+  'domain','domestic','dominant','dominate','donate','dose','draft','drag','drama',
+  'dramatic','dramatically','drift','dumb','dump','dust','duty','dynamic','eager',
+  'earnings','ecological','economics','economist','economy','edition','editor',
+  'educate','effective','effectively','efficiency','efficient','elaborate','elderly',
+  'elect','electronic','element','eliminate','elite','elsewhere','embrace','emerge',
+  'emergency','emission','emotion','emotional','emphasis','emphasize','empire',
+  'employ','employee','employer','employment','empower','enable','encounter','endure',
+  'enforce','enforcement','engage','engagement','engineer','engineering','enhance',
+  'enormous','enterprise','entertainment','enthusiasm','entrepreneur','entry',
+  'environmental','episode','equality','equation','equipment','equivalent','era',
+  'error','essay','essential','essentially','estate','estimate','evaluate',
+  'evaluation','eventually','everywhere','evolve','examine','exceed','exception',
+  'excessive','exclusively','execute','executive','exhibit','exhibition','expansion',
+  'explicit','exploit','exploration','explore','explosion','export','expose',
+  'exposure','extend','extension','extensive','extent','extraordinary','fabric',
+  'facilitate','facility','factor','faculty','fade','fame','fancy','fantasy',
+  'fate','favorable','federal','fee','phenomenon','fiber','fiction','fierce',
+  'fifth','file','filter','flag','flame','flee','flesh','flexibility','flexible',
+  'float','flood','folk','footage','forecast','forever','formation','formula',
+  'forth','fortune','fossil','found','foundation','founder','fraction','fragment',
+  'framework','franchise','frequency','frequent','frustrate','fundamental','funding',
+]);
+
+/**
+ * 判断单词的难度级别
+ */
+function getWordLevel(word) {
+  const w = word.toLowerCase();
+  if (A1_WORDS.has(w)) return 'A1';
+  if (A2_WORDS.has(w)) return 'A2';
+  if (B1_WORDS.has(w)) return 'B1';
+  return 'B2+';
+}
+
+/**
+ * 检查单词是否为常用词（A1/A2级别）
+ */
+function isCommonWord(word) {
+  const w = word.toLowerCase();
+  return A1_WORDS.has(w) || A2_WORDS.has(w);
+}
+
+/**
+ * 获取所有常用词（用于难度计算）
+ */
+function getAllCommonWords() {
+  return new Set([...A1_WORDS, ...A2_WORDS, ...B1_WORDS]);
+}
+
+module.exports = { getWordLevel, isCommonWord, getAllCommonWords, A1_WORDS, A2_WORDS, B1_WORDS };

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+client/dist/
+dist-windows/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Zip archives
+*.zip
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.sw?
