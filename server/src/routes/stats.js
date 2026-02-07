@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
+const { safeJsonParse } = require('../utils/helpers');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -11,27 +12,22 @@ router.get('/overview', (req, res) => {
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 
-  // 生词库统计
-  const { activeVocab } = db.prepare(
-    "SELECT COUNT(*) as activeVocab FROM vocabulary WHERE user_id = ? AND status = 'active'"
-  ).get(userId);
+  // 合并生词库统计为一条聚合查询
+  const vocabStats = db.prepare(`
+    SELECT
+      COUNT(CASE WHEN status = 'active' THEN 1 END) as activeVocab,
+      COUNT(CASE WHEN status = 'mastered' THEN 1 END) as masteredVocab,
+      COUNT(CASE WHEN status = 'active' AND click_count >= 3 THEN 1 END) as highFreqVocab
+    FROM vocabulary WHERE user_id = ?
+  `).get(userId);
 
-  const { masteredVocab } = db.prepare(
-    "SELECT COUNT(*) as masteredVocab FROM vocabulary WHERE user_id = ? AND status = 'mastered'"
-  ).get(userId);
-
-  const { highFreqVocab } = db.prepare(
-    "SELECT COUNT(*) as highFreqVocab FROM vocabulary WHERE user_id = ? AND status = 'active' AND click_count >= 3"
-  ).get(userId);
-
-  // 文章统计
-  const { totalArticles } = db.prepare(
-    'SELECT COUNT(*) as totalArticles FROM articles WHERE user_id = ?'
-  ).get(userId);
-
-  const { completedArticles } = db.prepare(
-    'SELECT COUNT(*) as completedArticles FROM articles WHERE user_id = ? AND is_completed = 1'
-  ).get(userId);
+  // 合并文章统计为一条聚合查询
+  const articleStats = db.prepare(`
+    SELECT
+      COUNT(*) as totalArticles,
+      COUNT(CASE WHEN is_completed = 1 THEN 1 END) as completedArticles
+    FROM articles WHERE user_id = ?
+  `).get(userId);
 
   // 最近的阅读会话
   const recentSessions = db.prepare(`
@@ -58,14 +54,14 @@ router.get('/overview', (req, res) => {
       totalArticlesRead: user.total_articles_read,
     },
     vocab: {
-      active: activeVocab,
-      mastered: masteredVocab,
-      highFreq: highFreqVocab,
-      total: activeVocab + masteredVocab,
+      active: vocabStats.activeVocab,
+      mastered: vocabStats.masteredVocab,
+      highFreq: vocabStats.highFreqVocab,
+      total: vocabStats.activeVocab + vocabStats.masteredVocab,
     },
     articles: {
-      total: totalArticles,
-      completed: completedArticles,
+      total: articleStats.totalArticles,
+      completed: articleStats.completedArticles,
     },
     recentSessions,
     topHighFreqWords,
@@ -104,7 +100,7 @@ router.get('/session/:id', (req, res) => {
   }
 
   // 解析高频词
-  session.high_freq_words = JSON.parse(session.high_freq_words || '[]');
+  session.high_freq_words = safeJsonParse(session.high_freq_words, []);
 
   res.json({ session });
 });
@@ -122,7 +118,7 @@ router.get('/sessions', (req, res) => {
   `).all(userId);
 
   sessions.forEach(s => {
-    s.high_freq_words = JSON.parse(s.high_freq_words || '[]');
+    s.high_freq_words = safeJsonParse(s.high_freq_words, []);
   });
 
   res.json({ sessions });
@@ -151,15 +147,32 @@ router.get('/review-suggestions', (req, res) => {
     ORDER BY completed_at DESC
   `).all(userId);
 
+  if (completedArticles.length === 0) {
+    return res.json({ suggestions: [] });
+  }
+
+  // 批量获取所有已完成文章的点击词（消除 N+1 查询）
+  const articleIds = completedArticles.map(a => a.id);
+  const placeholders = articleIds.map(() => '?').join(',');
+  const allClicked = db.prepare(`
+    SELECT DISTINCT article_id, word
+    FROM article_clicked_words
+    WHERE article_id IN (${placeholders}) AND user_id = ?
+  `).all(...articleIds, userId);
+
+  // 按 article_id 分组
+  const clickedByArticle = {};
+  for (const row of allClicked) {
+    if (!clickedByArticle[row.article_id]) {
+      clickedByArticle[row.article_id] = [];
+    }
+    clickedByArticle[row.article_id].push(row.word);
+  }
+
   const suggestions = [];
 
   for (const article of completedArticles) {
-    // 获取该文章中曾标记的生词/词组
-    const clickedInArticle = db.prepare(
-      'SELECT DISTINCT word FROM article_clicked_words WHERE article_id = ? AND user_id = ?'
-    ).all(article.id, userId).map(r => r.word);
-
-    // 计算这些词中还有多少仍然是 active（未掌握）
+    const clickedInArticle = clickedByArticle[article.id] || [];
     const stillActive = clickedInArticle.filter(w => activeSet.has(w));
 
     if (stillActive.length > 0) {
@@ -170,7 +183,7 @@ router.get('/review-suggestions', (req, res) => {
         completedAt: article.completed_at,
         totalClickedWords: clickedInArticle.length,
         stillActiveCount: stillActive.length,
-        stillActiveWords: stillActive.slice(0, 5), // 最多展示5个
+        stillActiveWords: stillActive.slice(0, 5),
       });
     }
   }

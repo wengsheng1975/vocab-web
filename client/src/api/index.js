@@ -32,6 +32,11 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   demo: () => api.post('/auth/demo'),
+  userCount: () => api.get('/auth/user-count'),
+  checkUsername: (username) => api.get(`/auth/check-username/${encodeURIComponent(username)}`),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  verifyResetToken: (token) => api.get(`/auth/verify-reset-token/${token}`),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
 };
 
 // 文章 API
@@ -52,6 +57,10 @@ export const articlesAPI = {
   finish: (articleId, wordMeanings) => api.post(`/articles/${articleId}/finish`, { wordMeanings }),
   update: (id, data) => api.put(`/articles/${id}`, data),
   delete: (id) => api.delete(`/articles/${id}`),
+  saveProgress: (articleId, data) => api.post(`/articles/${articleId}/save-progress`, data),
+  getProgress: (articleId) => api.get(`/articles/${articleId}/progress`),
+  deleteProgress: (articleId) => api.delete(`/articles/${articleId}/progress`),
+  getUnfinished: () => api.get('/articles/reading/unfinished'),
 };
 
 // 生词库 API

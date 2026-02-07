@@ -38,18 +38,33 @@ router.get('/', (req, res) => {
 
   const words = db.prepare(sql).all(...params);
 
-  // 获取每个单词的释义
-  const wordsWithMeanings = words.map(word => {
-    const meanings = db.prepare(`
+  // 批量获取所有单词的释义（消除 N+1 查询）
+  let wordsWithMeanings = words;
+  if (words.length > 0) {
+    const vocabIds = words.map(w => w.id);
+    const placeholders = vocabIds.map(() => '?').join(',');
+    const allMeanings = db.prepare(`
       SELECT wm.*, a.title as article_title
       FROM word_meanings wm
       LEFT JOIN articles a ON wm.article_id = a.id
-      WHERE wm.vocabulary_id = ?
+      WHERE wm.vocabulary_id IN (${placeholders})
       ORDER BY wm.created_at DESC
-    `).all(word.id);
+    `).all(...vocabIds);
 
-    return { ...word, meanings };
-  });
+    // 按 vocabulary_id 分组
+    const meaningsByVocabId = {};
+    for (const m of allMeanings) {
+      if (!meaningsByVocabId[m.vocabulary_id]) {
+        meaningsByVocabId[m.vocabulary_id] = [];
+      }
+      meaningsByVocabId[m.vocabulary_id].push(m);
+    }
+
+    wordsWithMeanings = words.map(word => ({
+      ...word,
+      meanings: meaningsByVocabId[word.id] || [],
+    }));
+  }
 
   // 获取总数
   let countSql = 'SELECT COUNT(*) as total FROM vocabulary WHERE user_id = ?';
@@ -130,7 +145,7 @@ router.put('/:id', (req, res) => {
   if (meaning) {
     db.prepare(`
       INSERT INTO word_meanings (vocabulary_id, article_id, meaning, context_sentence)
-      VALUES (?, 0, ?, ?)
+      VALUES (?, NULL, ?, ?)
     `).run(vocabId, meaning, context_sentence || '');
   }
 

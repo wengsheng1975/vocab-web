@@ -24,4 +24,24 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// 优雅关闭：确保 WAL 文件正确合并，数据不丢失
+function closeDatabase() {
+  try {
+    db.close();
+    console.log('数据库连接已关闭');
+  } catch (err) {
+    console.error('关闭数据库时出错:', err);
+  }
+}
+
+process.on('SIGINT', () => {
+  closeDatabase();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  closeDatabase();
+  process.exit(0);
+});
+
 module.exports = db;

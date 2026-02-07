@@ -51,6 +51,28 @@ app.get('*', (req, res) => {
   }
 });
 
+// 全局错误处理中间件（必须在所有路由之后）
+app.use((err, req, res, _next) => {
+  console.error('未处理的错误:', err);
+
+  // multer 文件大小超限
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: '文件大小超过限制（最大 10MB）' });
+  }
+
+  // multer 其他错误
+  if (err.message && err.message.includes('不支持的文件格式')) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  // 通用错误
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production'
+      ? '服务器内部错误'
+      : err.message || '服务器内部错误',
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`服务器运行在 http://localhost:${PORT}`);
 });
