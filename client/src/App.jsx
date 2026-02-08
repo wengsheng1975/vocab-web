@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
+import Footer from './components/Footer'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
@@ -10,10 +11,11 @@ import Vocabulary from './pages/Vocabulary'
 import Library from './pages/Library'
 import ReadingReport from './pages/ReadingReport'
 import Progress from './pages/Progress'
+import LoadingSpinner from './components/ui/LoadingSpinner'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
-  if (loading) return <div className="loading">加载中...</div>
+  if (loading) return <LoadingSpinner />
   return user ? children : <Navigate to="/login" />
 }
 
@@ -21,9 +23,9 @@ function App() {
   const { user } = useAuth()
 
   return (
-    <div className="app">
+    <div className="min-h-screen bg-surface-50 flex flex-col">
       {user && <Navbar />}
-      <main className="main-content">
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8">
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
           <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
@@ -36,6 +38,7 @@ function App() {
           <Route path="/progress" element={<PrivateRoute><Progress /></PrivateRoute>} />
         </Routes>
       </main>
+      {user && <Footer />}
     </div>
   )
 }

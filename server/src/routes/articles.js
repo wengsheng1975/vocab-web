@@ -4,28 +4,50 @@ const multer = require('multer');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
 const db = require('../config/db');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, validateIdParam } = require('../middleware/auth');
 const { extractWords, assessDifficulty, isDifficultyAppropriate } = require('../utils/difficulty');
+const { getSpellingSuggestions } = require('../utils/spellCheck');
 
 const router = express.Router();
 router.use(authenticateToken);
 
-// 文件上传配置（内存存储，最大10MB）
+// MIME 类型白名单（扩展名 + MIME 双重校验）
+const ALLOWED_FILE_TYPES = {
+  '.txt': ['text/plain'],
+  '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  '.pdf': ['application/pdf'],
+};
+
+// 文件上传配置（内存存储，最大 5MB）
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (['.txt', '.docx', '.pdf'].includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error('不支持的文件格式，请上传 .txt、.docx 或 .pdf 文件'));
+    const allowedMimes = ALLOWED_FILE_TYPES[ext];
+    if (!allowedMimes) {
+      return cb(new Error('不支持的文件格式，请上传 .txt、.docx 或 .pdf 文件'));
     }
+    // MIME 类型校验（防止扩展名伪造）
+    if (!allowedMimes.includes(file.mimetype)) {
+      return cb(new Error('文件类型与扩展名不匹配'));
+    }
+    cb(null, true);
   },
 });
 
-// 上传文件并解析为纯文本
-router.post('/upload-file', upload.single('file'), async (req, res) => {
+// 上传文件并解析为纯文本（multer 错误处理包装）
+router.post('/upload-file', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: '文件大小不能超过 5MB' });
+      }
+      return res.status(400).json({ error: err.message || '文件上传失败' });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请选择文件' });
@@ -55,7 +77,8 @@ router.post('/upload-file', upload.single('file'), async (req, res) => {
     res.json({ text, filename });
   } catch (err) {
     console.error('文件解析失败:', err);
-    res.status(500).json({ error: '文件解析失败: ' + err.message });
+    // 不泄露内部错误细节给客户端
+    res.status(500).json({ error: '文件解析失败，请确认文件格式正确且未损坏' });
   }
 });
 
@@ -136,8 +159,13 @@ function localGrammarCheck(text) {
 router.post('/grammar-check', async (req, res) => {
   const { text } = req.body;
 
-  if (!text || text.trim().length === 0) {
+  if (!text || typeof text !== 'string' || text.trim().length === 0) {
     return res.json({ source: 'none', issues: [] });
+  }
+
+  // 限制检查文本长度，防止滥用外部 API
+  if (text.length > 50000) {
+    return res.status(400).json({ error: '文本过长，语法检查最大支持 50000 字符' });
   }
 
   // 先尝试 LanguageTool API
@@ -170,12 +198,12 @@ router.post('/grammar-check', async (req, res) => {
                         m.rule?.issueType === 'typographical';
 
         return {
-          offset: m.offset,
-          length: m.length,
-          message: m.message,
+          offset: Number(m.offset) || 0,
+          length: Number(m.length) || 0,
+          message: typeof m.message === 'string' ? m.message : '',
           rule: m.rule?.id || 'UNKNOWN',
           severity: isAuto ? 'auto' : 'warning',
-          suggestions: (m.replacements || []).slice(0, 3).map(r => r.value),
+          suggestions: (m.replacements || []).slice(0, 3).map(r => typeof r.value === 'string' ? r.value : ''),
         };
       });
 
@@ -198,6 +226,14 @@ router.post('/import', (req, res) => {
 
   if (!title || !content) {
     return res.status(400).json({ error: '标题和内容都是必填项' });
+  }
+
+  // 输入长度校验
+  if (typeof title !== 'string' || title.trim().length === 0 || title.length > 200) {
+    return res.status(400).json({ error: '标题长度应在 1-200 字符之间' });
+  }
+  if (typeof content !== 'string' || content.trim().length === 0 || content.length > 500000) {
+    return res.status(400).json({ error: '文章内容不能为空，且不超过 50 万字符' });
   }
 
   // 评估文章难度
@@ -225,7 +261,7 @@ router.post('/import', (req, res) => {
 });
 
 // 获取文章详情（用于阅读界面）
-router.get('/:id', (req, res) => {
+router.get('/:id', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
 
@@ -273,24 +309,32 @@ router.get('/', (req, res) => {
 });
 
 // 在阅读过程中点击标记单词
-router.post('/:id/click-word', (req, res) => {
+router.post('/:id/click-word', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
   const { word, wordIndex } = req.body;
 
-  if (!word) {
+  if (!word || typeof word !== 'string') {
     return res.status(400).json({ error: '请提供单词' });
   }
 
+  // 输入净化：只允许字母（匹配前端 tokenizer 行为），长度限制
+  const cleanWord = word.toLowerCase().trim();
+  if (!/^[a-z]+$/.test(cleanWord) || cleanWord.length > 50) {
+    return res.status(400).json({ error: '单词格式不正确' });
+  }
+
+  // wordIndex 校验
+  const safeWordIndex = (typeof wordIndex === 'number' && Number.isInteger(wordIndex) && wordIndex >= 0)
+    ? wordIndex : 0;
+
   const article = db.prepare(
-    'SELECT * FROM articles WHERE id = ? AND user_id = ?'
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
   ).get(articleId, userId);
 
   if (!article) {
     return res.status(404).json({ error: '文章不存在' });
   }
-
-  const cleanWord = word.toLowerCase().trim();
 
   // 检查是否已经在该文章中点击过
   const existing = db.prepare(
@@ -301,16 +345,36 @@ router.post('/:id/click-word', (req, res) => {
     return res.json({ message: '该单词已标记', word: cleanWord, alreadyClicked: true });
   }
 
+  // 拼写检查：如果单词不在词库中，返回建议
+  const spellResult = getSpellingSuggestions(cleanWord);
+
   // 记录点击
   db.prepare(
     'INSERT INTO article_clicked_words (article_id, user_id, word, word_index) VALUES (?, ?, ?, ?)'
-  ).run(articleId, userId, cleanWord, wordIndex || 0);
+  ).run(articleId, userId, cleanWord, safeWordIndex);
 
-  res.json({ message: '已标记', word: cleanWord, alreadyClicked: false });
+  res.json({
+    message: '已标记',
+    word: cleanWord,
+    alreadyClicked: false,
+    spelling: spellResult.isCorrect ? null : {
+      suggestions: spellResult.suggestions.map(s => s.word),
+    },
+  });
+});
+
+// 拼写检查（独立端点，可用于任意场景）
+router.post('/spell-check', (req, res) => {
+  const { word } = req.body;
+  if (!word || typeof word !== 'string') {
+    return res.status(400).json({ error: '请提供单词' });
+  }
+  const result = getSpellingSuggestions(word.toLowerCase().trim());
+  res.json(result);
 });
 
 // 标记词组
-router.post('/:id/click-phrase', (req, res) => {
+router.post('/:id/click-phrase', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
   const { phrase, indices } = req.body;
@@ -319,7 +383,26 @@ router.post('/:id/click-phrase', (req, res) => {
     return res.status(400).json({ error: '请提供词组和位置' });
   }
 
-  const indicesStr = Array.isArray(indices) ? indices.join(',') : String(indices);
+  // 输入校验：词组应为空格分隔的小写字母序列
+  if (typeof phrase !== 'string' || phrase.length > 200 || !/^[a-z]+( [a-z]+)+$/.test(phrase)) {
+    return res.status(400).json({ error: '词组格式错误' });
+  }
+
+  // indices 校验：必须是非负整数数组
+  if (!Array.isArray(indices) || indices.length < 2 ||
+      !indices.every(i => typeof i === 'number' && Number.isInteger(i) && i >= 0)) {
+    return res.status(400).json({ error: '词组位置数据格式错误' });
+  }
+
+  // 验证文章归属
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  const indicesStr = indices.join(',');
 
   // 删除旧条目（如果更新词组）
   db.prepare(
@@ -334,10 +417,22 @@ router.post('/:id/click-phrase', (req, res) => {
 });
 
 // 取消标记词组
-router.post('/:id/unclick-phrase', (req, res) => {
+router.post('/:id/unclick-phrase', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
   const { phrase } = req.body;
+
+  if (!phrase || typeof phrase !== 'string') {
+    return res.status(400).json({ error: '请提供词组' });
+  }
+
+  // 验证文章归属
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
 
   db.prepare(
     'DELETE FROM article_clicked_words WHERE article_id = ? AND user_id = ? AND word = ?'
@@ -347,12 +442,27 @@ router.post('/:id/unclick-phrase', (req, res) => {
 });
 
 // 取消标记单词
-router.post('/:id/unclick-word', (req, res) => {
+router.post('/:id/unclick-word', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
   const { word } = req.body;
 
+  if (!word || typeof word !== 'string') {
+    return res.status(400).json({ error: '请提供单词' });
+  }
+
   const cleanWord = word.toLowerCase().trim();
+  if (!/^[a-z]+$/.test(cleanWord) || cleanWord.length > 50) {
+    return res.status(400).json({ error: '单词格式不正确' });
+  }
+
+  // 验证文章归属
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
 
   db.prepare(
     'DELETE FROM article_clicked_words WHERE article_id = ? AND user_id = ? AND word = ?'
@@ -361,229 +471,257 @@ router.post('/:id/unclick-word', (req, res) => {
   res.json({ message: '已取消标记', word: cleanWord });
 });
 
+// 并发控制：防止同一文章同时提交多次 finish
+const finishLocks = new Set();
+
 // 完成阅读 — 这是核心逻辑：合并生词库 + 生成报告
-router.post('/:id/finish', (req, res) => {
+router.post('/:id/finish', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
-  const { wordMeanings } = req.body; // { word: { meaning, context_sentence } }
+  const { wordMeanings: rawWordMeanings } = req.body;
 
-  const article = db.prepare(
-    'SELECT * FROM articles WHERE id = ? AND user_id = ?'
-  ).get(articleId, userId);
-
-  if (!article) {
-    return res.status(404).json({ error: '文章不存在' });
+  // 并发防护：同一用户同一文章不能同时 finish
+  const lockKey = `${userId}:${articleId}`;
+  if (finishLocks.has(lockKey)) {
+    return res.status(409).json({ error: '正在处理中，请勿重复提交' });
   }
+  finishLocks.add(lockKey);
 
-  const isReread = article.is_completed === 1;
+  try {
+    // wordMeanings 输入校验与净化
+    let wordMeanings = null;
+    if (rawWordMeanings && typeof rawWordMeanings === 'object' && !Array.isArray(rawWordMeanings)) {
+      wordMeanings = {};
+      for (const [key, val] of Object.entries(rawWordMeanings)) {
+        if (typeof key !== 'string' || key.length > 200) continue;
+        if (!val || typeof val !== 'object') continue;
+        wordMeanings[key] = {
+          meaning: (typeof val.meaning === 'string' && val.meaning.length <= 500) ? val.meaning : '',
+          context_sentence: (typeof val.context_sentence === 'string' && val.context_sentence.length <= 1000) ? val.context_sentence : '',
+        };
+      }
+    }
 
-  // 获取本次阅读中点击的所有生词
-  const clickedWords = db.prepare(
-    'SELECT DISTINCT word FROM article_clicked_words WHERE article_id = ? AND user_id = ?'
-  ).all(articleId, userId).map(r => r.word);
+    const article = db.prepare(
+      'SELECT * FROM articles WHERE id = ? AND user_id = ?'
+    ).get(articleId, userId);
 
-  const clickedSet = new Set(clickedWords);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
 
-  // 获取文章中所有唯一单词
-  const articleWords = [...new Set(extractWords(article.content))];
+    const isReread = article.is_completed === 1;
 
-  // 获取用户当前生词库中所有词（active + mastered，重读时可能重新标记mastered的词）
-  const currentVocab = db.prepare(
-    "SELECT * FROM vocabulary WHERE user_id = ?"
-  ).all(userId);
-  const vocabMap = {};
-  currentVocab.forEach(v => { vocabMap[v.word] = v; });
+    // 获取本次阅读中点击的所有生词
+    const clickedWords = db.prepare(
+      'SELECT DISTINCT word FROM article_clicked_words WHERE article_id = ? AND user_id = ?'
+    ).all(articleId, userId).map(r => r.word);
 
-  let newWordsCount = 0;
-  let repeatedWordsCount = 0;
-  let masteredWordsCount = 0;
-  const highFreqWords = [];
+    const clickedSet = new Set(clickedWords);
 
-  // 使用事务处理生词库合并
-  const processVocab = db.transaction(() => {
-    // 1. 处理点击的单词（生词）
-    for (const word of clickedWords) {
-      const existing = vocabMap[word];
+    // 获取文章中所有唯一单词
+    const articleWords = [...new Set(extractWords(article.content))];
 
-      if (existing) {
-        // 已在生词库中（可能是 active 或 mastered）— 词频+1，重置skip_count，恢复为active
-        const newClickCount = existing.click_count + 1;
-        const wasMastered = existing.status === 'mastered';
-        db.prepare(`
-          UPDATE vocabulary SET 
-            click_count = ?,
-            skip_count = 0,
-            last_seen_article_id = ?,
-            last_clicked_at = CURRENT_TIMESTAMP,
-            status = 'active'
-          WHERE id = ?
-        `).run(newClickCount, articleId, existing.id);
+    // 获取用户当前生词库中所有词（active + mastered，重读时可能重新标记mastered的词）
+    const currentVocab = db.prepare(
+      "SELECT * FROM vocabulary WHERE user_id = ?"
+    ).all(userId);
+    const vocabMap = {};
+    currentVocab.forEach(v => { vocabMap[v.word] = v; });
 
-        repeatedWordsCount++;
-        if (newClickCount >= 3) {
-          highFreqWords.push({ word, count: newClickCount });
-        }
-      } else {
-        // 新生词 — 加入生词库
-        const result = db.prepare(`
-          INSERT INTO vocabulary (user_id, word, click_count, skip_count, status, first_seen_article_id, last_seen_article_id)
-          VALUES (?, ?, 1, 0, 'active', ?, ?)
-        `).run(userId, word, articleId, articleId);
+    let newWordsCount = 0;
+    let repeatedWordsCount = 0;
+    let masteredWordsCount = 0;
+    const highFreqWords = [];
 
-        newWordsCount++;
+    // 使用事务处理生词库合并
+    const processVocab = db.transaction(() => {
+      // 1. 处理点击的单词（生词）
+      for (const word of clickedWords) {
+        const existing = vocabMap[word];
 
-        // 如果提供了释义，存入 word_meanings
-        if (wordMeanings && wordMeanings[word]) {
+        if (existing) {
+          // 已在生词库中 — 词频+1，重置skip_count，恢复为active
+          const newClickCount = existing.click_count + 1;
           db.prepare(`
-            INSERT INTO word_meanings (vocabulary_id, article_id, meaning, context_sentence)
-            VALUES (?, ?, ?, ?)
-          `).run(
-            result.lastInsertRowid,
-            articleId,
-            wordMeanings[word].meaning || '',
-            wordMeanings[word].context_sentence || ''
-          );
-        }
-      }
-    }
+            UPDATE vocabulary SET 
+              click_count = ?,
+              skip_count = 0,
+              last_seen_article_id = ?,
+              last_clicked_at = CURRENT_TIMESTAMP,
+              status = 'active'
+            WHERE id = ?
+          `).run(newClickCount, articleId, existing.id);
 
-    // 2. 处理未点击但在生词库中的词（可能已掌握）— 只处理active状态的
-    for (const word of articleWords) {
-      if (clickedSet.has(word)) continue; // 跳过已点击的
+          repeatedWordsCount++;
+          if (newClickCount >= 3) {
+            highFreqWords.push({ word, count: newClickCount });
+          }
+        } else {
+          // 新生词 — 加入生词库
+          const result = db.prepare(`
+            INSERT INTO vocabulary (user_id, word, click_count, skip_count, status, first_seen_article_id, last_seen_article_id)
+            VALUES (?, ?, 1, 0, 'active', ?, ?)
+          `).run(userId, word, articleId, articleId);
 
-      const existing = vocabMap[word];
-      if (!existing) continue; // 不在生词库中，跳过
-      if (existing.status !== 'active') continue; // 已mastered的不再处理skip
+          newWordsCount++;
 
-      // 这个词出现在文章中但用户没有点击 => skip_count + 1
-      const newSkipCount = existing.skip_count + 1;
-
-      if (newSkipCount >= 3) {
-        // 连续3次以上未点击 => 掌握，标记为 mastered
-        db.prepare(`
-          UPDATE vocabulary SET skip_count = ?, status = 'mastered'
-          WHERE id = ?
-        `).run(newSkipCount, existing.id);
-        masteredWordsCount++;
-      } else {
-        db.prepare(`
-          UPDATE vocabulary SET skip_count = ?
-          WHERE id = ?
-        `).run(newSkipCount, existing.id);
-      }
-    }
-
-    // 3. 为已存在的生词添加新的上下文释义
-    for (const word of clickedWords) {
-      if (wordMeanings && wordMeanings[word]) {
-        const vocab = db.prepare(
-          'SELECT id FROM vocabulary WHERE user_id = ? AND word = ?'
-        ).get(userId, word);
-
-        if (vocab) {
-          // 检查是否已有该文章的释义
-          const existingMeaning = db.prepare(
-            'SELECT id FROM word_meanings WHERE vocabulary_id = ? AND article_id = ?'
-          ).get(vocab.id, articleId);
-
-          if (!existingMeaning && wordMeanings[word].meaning) {
+          // 如果提供了释义，存入 word_meanings
+          if (wordMeanings && wordMeanings[word]) {
             db.prepare(`
               INSERT INTO word_meanings (vocabulary_id, article_id, meaning, context_sentence)
               VALUES (?, ?, ?, ?)
             `).run(
-              vocab.id,
+              result.lastInsertRowid,
               articleId,
-              wordMeanings[word].meaning,
+              wordMeanings[word].meaning || '',
               wordMeanings[word].context_sentence || ''
             );
           }
         }
       }
-    }
 
-    // 4. 更新文章状态
-    const unknownPercentage = articleWords.length > 0
-      ? (clickedWords.length / articleWords.length) * 100
-      : 0;
+      // 2. 处理未点击但在生词库中的词（可能已掌握）— 只处理active状态的
+      for (const word of articleWords) {
+        if (clickedSet.has(word)) continue;
 
-    db.prepare(`
-      UPDATE articles SET 
-        is_completed = 1,
-        unknown_word_count = ?,
-        unknown_percentage = ?,
-        completed_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(clickedWords.length, Math.round(unknownPercentage * 10) / 10, articleId);
+        const existing = vocabMap[word];
+        if (!existing) continue;
+        if (existing.status !== 'active') continue;
 
-    // 5. 获取最新的生词库总数
-    const { totalVocab } = db.prepare(
-      "SELECT COUNT(*) as totalVocab FROM vocabulary WHERE user_id = ? AND status = 'active'"
-    ).get(userId);
+        const newSkipCount = existing.skip_count + 1;
 
-    // 6. 评估用户水平
-    const recentSessions = db.prepare(`
-      SELECT * FROM reading_sessions WHERE user_id = ?
-      ORDER BY created_at DESC LIMIT 10
-    `).all(userId);
+        if (newSkipCount >= 3) {
+          db.prepare(`
+            UPDATE vocabulary SET skip_count = ?, status = 'mastered'
+            WHERE id = ?
+          `).run(newSkipCount, existing.id);
+          masteredWordsCount++;
+        } else {
+          db.prepare(`
+            UPDATE vocabulary SET skip_count = ?
+            WHERE id = ?
+          `).run(newSkipCount, existing.id);
+        }
+      }
 
-    const { estimateUserLevel } = require('../utils/difficulty');
-    const allSessions = [...recentSessions, {
-      article_difficulty: article.difficulty_level,
-      unknown_percentage: unknownPercentage,
-    }];
-    const userLevelResult = estimateUserLevel(allSessions);
+      // 3. 为已存在的生词添加新的上下文释义（仅针对非新词，新词已在步骤1处理）
+      for (const word of clickedWords) {
+        if (wordMeanings && wordMeanings[word]) {
+          const vocab = db.prepare(
+            'SELECT id FROM vocabulary WHERE user_id = ? AND word = ?'
+          ).get(userId, word);
 
-    // 7. 保存阅读会话报告
-    db.prepare(`
-      INSERT INTO reading_sessions (
-        user_id, article_id, article_difficulty,
-        new_words_count, repeated_words_count, mastered_words_count,
-        high_freq_words, total_vocab_size, unknown_percentage, estimated_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      userId, articleId, article.difficulty_level,
-      newWordsCount, repeatedWordsCount, masteredWordsCount,
-      JSON.stringify(highFreqWords), totalVocab,
-      Math.round(unknownPercentage * 10) / 10,
-      userLevelResult.level
-    );
+          if (vocab) {
+            const existingMeaning = db.prepare(
+              'SELECT id FROM word_meanings WHERE vocabulary_id = ? AND article_id = ?'
+            ).get(vocab.id, articleId);
 
-    // 8. 更新用户水平（重读不增加文章计数）
-    if (isReread) {
-      db.prepare('UPDATE users SET estimated_level = ? WHERE id = ?')
-        .run(userLevelResult.level, userId);
-    } else {
-      db.prepare('UPDATE users SET estimated_level = ?, total_articles_read = total_articles_read + 1 WHERE id = ?')
-        .run(userLevelResult.level, userId);
-    }
+            if (!existingMeaning && wordMeanings[word].meaning) {
+              db.prepare(`
+                INSERT INTO word_meanings (vocabulary_id, article_id, meaning, context_sentence)
+                VALUES (?, ?, ?, ?)
+              `).run(
+                vocab.id,
+                articleId,
+                wordMeanings[word].meaning,
+                wordMeanings[word].context_sentence || ''
+              );
+            }
+          }
+        }
+      }
 
-    // 9. 记录水平历史
-    db.prepare(`
-      INSERT INTO user_level_history (user_id, level, level_score, article_id, unknown_percentage, vocab_size)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(userId, userLevelResult.level, userLevelResult.score, articleId, unknownPercentage, totalVocab);
+      // 4. 更新文章状态
+      const unknownPercentage = articleWords.length > 0
+        ? (clickedWords.length / articleWords.length) * 100
+        : 0;
 
-    return {
-      newWordsCount,
-      repeatedWordsCount,
-      masteredWordsCount,
-      highFreqWords,
-      totalVocab,
-      unknownPercentage: Math.round(unknownPercentage * 10) / 10,
-      userLevel: userLevelResult,
-    };
-  });
+      db.prepare(`
+        UPDATE articles SET 
+          is_completed = 1,
+          unknown_word_count = ?,
+          unknown_percentage = ?,
+          completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(clickedWords.length, Math.round(unknownPercentage * 10) / 10, articleId);
 
-  const report = processVocab();
+      // 5. 获取最新的生词库总数
+      const { totalVocab } = db.prepare(
+        "SELECT COUNT(*) as totalVocab FROM vocabulary WHERE user_id = ? AND status = 'active'"
+      ).get(userId);
 
-  res.json({
-    message: '阅读完成！',
-    report,
-  });
+      // 6. 评估用户水平
+      const recentSessions = db.prepare(`
+        SELECT * FROM reading_sessions WHERE user_id = ?
+        ORDER BY created_at DESC LIMIT 10
+      `).all(userId);
+
+      const { estimateUserLevel } = require('../utils/difficulty');
+      const allSessions = [...recentSessions, {
+        article_difficulty: article.difficulty_level,
+        unknown_percentage: unknownPercentage,
+      }];
+      const userLevelResult = estimateUserLevel(allSessions);
+
+      // 7. 保存阅读会话报告
+      db.prepare(`
+        INSERT INTO reading_sessions (
+          user_id, article_id, article_difficulty,
+          new_words_count, repeated_words_count, mastered_words_count,
+          high_freq_words, total_vocab_size, unknown_percentage, estimated_level
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        userId, articleId, article.difficulty_level,
+        newWordsCount, repeatedWordsCount, masteredWordsCount,
+        JSON.stringify(highFreqWords), totalVocab,
+        Math.round(unknownPercentage * 10) / 10,
+        userLevelResult.level
+      );
+
+      // 8. 更新用户水平（重读不增加文章计数）
+      if (isReread) {
+        db.prepare('UPDATE users SET estimated_level = ? WHERE id = ?')
+          .run(userLevelResult.level, userId);
+      } else {
+        db.prepare('UPDATE users SET estimated_level = ?, total_articles_read = total_articles_read + 1 WHERE id = ?')
+          .run(userLevelResult.level, userId);
+      }
+
+      // 9. 记录水平历史
+      db.prepare(`
+        INSERT INTO user_level_history (user_id, level, level_score, article_id, unknown_percentage, vocab_size)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(userId, userLevelResult.level, userLevelResult.score, articleId, unknownPercentage, totalVocab);
+
+      return {
+        newWordsCount,
+        repeatedWordsCount,
+        masteredWordsCount,
+        highFreqWords,
+        totalVocab,
+        unknownPercentage: Math.round(unknownPercentage * 10) / 10,
+        userLevel: userLevelResult,
+      };
+    });
+
+    const report = processVocab();
+
+    res.json({
+      message: '阅读完成！',
+      report,
+    });
+
+  } catch (err) {
+    console.error('完成阅读失败:', err);
+    res.status(500).json({ error: '完成阅读处理失败，请重试' });
+  } finally {
+    finishLocks.delete(lockKey);
+  }
 });
 
 // 编辑文章（更新标题或内容）
-router.put('/:id', (req, res) => {
+router.put('/:id', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
   const { title, content } = req.body;
@@ -633,7 +771,7 @@ router.put('/:id', (req, res) => {
 });
 
 // 删除文章（保留生词库和释义数据）
-router.delete('/:id', (req, res) => {
+router.delete('/:id', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
 
@@ -645,8 +783,8 @@ router.delete('/:id', (req, res) => {
     return res.status(404).json({ error: '文章不存在' });
   }
 
-  // 将 word_meanings 中关联此文章的释义 article_id 置为 0，保留释义数据
-  db.prepare('UPDATE word_meanings SET article_id = 0 WHERE article_id = ?').run(articleId);
+  // 将 word_meanings 中关联此文章的释义 article_id 置为 NULL，保留释义数据
+  db.prepare('UPDATE word_meanings SET article_id = NULL WHERE article_id = ?').run(articleId);
 
   // 删除该文章的点击记录
   db.prepare('DELETE FROM article_clicked_words WHERE article_id = ? AND user_id = ?').run(articleId, userId);
