@@ -18,10 +18,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 401（未认证/token 过期）或 403 + 令牌相关错误 → 清除登录状态
+    const status = error.response?.status;
+    const errMsg = error.response?.data?.error || '';
+    const isTokenInvalid = status === 401 || (status === 403 && errMsg.includes('令牌'));
+    if (isTokenInvalid) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -32,6 +38,14 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   demo: () => api.post('/auth/demo'),
+  logout: () => api.post('/auth/logout'),
+  userCount: () => api.get('/auth/user-count'),
+  checkUsername: (username) => api.get(`/auth/check-username/${encodeURIComponent(username)}`),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  verifyResetToken: (token) => api.get(`/auth/verify-reset-token/${token}`),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
+  getTargetLevel: () => api.get('/auth/target-level'),
+  setTargetLevel: (targetLevel) => api.put('/auth/target-level', { targetLevel }),
 };
 
 // 文章 API
@@ -52,6 +66,10 @@ export const articlesAPI = {
   finish: (articleId, wordMeanings) => api.post(`/articles/${articleId}/finish`, { wordMeanings }),
   update: (id, data) => api.put(`/articles/${id}`, data),
   delete: (id) => api.delete(`/articles/${id}`),
+  saveProgress: (articleId, data) => api.post(`/articles/${articleId}/save-progress`, data),
+  getProgress: (articleId) => api.get(`/articles/${articleId}/progress`),
+  deleteProgress: (articleId) => api.delete(`/articles/${articleId}/progress`),
+  getUnfinished: () => api.get('/articles/reading/unfinished'),
 };
 
 // 生词库 API
@@ -59,6 +77,8 @@ export const vocabAPI = {
   getAll: (params) => api.get('/vocabulary', { params }),
   get: (id) => api.get(`/vocabulary/${id}`),
   update: (id, data) => api.put(`/vocabulary/${id}`, data),
+  updateMeaning: (vocabId, meaningId, data) => api.put(`/vocabulary/${vocabId}/meanings/${meaningId}`, data),
+  deleteMeaning: (vocabId, meaningId) => api.delete(`/vocabulary/${vocabId}/meanings/${meaningId}`),
   master: (id) => api.post(`/vocabulary/${id}/master`),
   restore: (id) => api.post(`/vocabulary/${id}/restore`),
 };

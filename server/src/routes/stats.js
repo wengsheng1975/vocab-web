@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../config/db');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, validateIdParam } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -9,7 +9,8 @@ router.use(authenticateToken);
 router.get('/overview', (req, res) => {
   const userId = req.user.id;
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  // 不查询 password_hash 等敏感字段
+  const user = db.prepare('SELECT id, username, email, estimated_level, target_level, total_articles_read, created_at FROM users WHERE id = ?').get(userId);
 
   // 生词库统计
   const { activeVocab } = db.prepare(
@@ -88,7 +89,7 @@ router.get('/level-history', (req, res) => {
 });
 
 // 获取阅读报告详情
-router.get('/session/:id', (req, res) => {
+router.get('/session/:id', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const sessionId = req.params.id;
 
@@ -103,8 +104,12 @@ router.get('/session/:id', (req, res) => {
     return res.status(404).json({ error: '会话不存在' });
   }
 
-  // 解析高频词
-  session.high_freq_words = JSON.parse(session.high_freq_words || '[]');
+  // 安全解析高频词 JSON
+  try {
+    session.high_freq_words = JSON.parse(session.high_freq_words || '[]');
+  } catch {
+    session.high_freq_words = [];
+  }
 
   res.json({ session });
 });
@@ -122,7 +127,11 @@ router.get('/sessions', (req, res) => {
   `).all(userId);
 
   sessions.forEach(s => {
-    s.high_freq_words = JSON.parse(s.high_freq_words || '[]');
+    try {
+      s.high_freq_words = JSON.parse(s.high_freq_words || '[]');
+    } catch {
+      s.high_freq_words = [];
+    }
   });
 
   res.json({ sessions });

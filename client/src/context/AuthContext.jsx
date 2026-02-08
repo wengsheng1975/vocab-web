@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api, { authAPI } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -22,25 +22,40 @@ export function AuthProvider({ children }) {
     if (savedStandalone === 'true') setStandalone(true);
 
     if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
-      setLoading(false);
-      return;
+      try {
+        const parsed = JSON.parse(savedUser);
+        // 基本完整性校验：确保解析出的用户对象包含 id
+        if (parsed && typeof parsed === 'object' && parsed.id) {
+          setToken(savedToken);
+          setUser(parsed);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // localStorage 数据损坏，清除并重新认证
+        console.warn('本地用户数据损坏，已清除');
+      }
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
     }
 
-    // 检查是否为独立模式
+    // 检查是否为独立模式（使用带超时的 api 实例，避免后端未启动时请求一直挂起导致页面打不开）
     try {
-      const { data: config } = await axios.get('/api/config');
+      const { data: config } = await api.get('/config');
       if (config.standalone) {
         setStandalone(true);
         localStorage.setItem('standalone', 'true');
-        const { data } = await axios.post('/api/auth/demo');
+        const { data } = await api.post('/auth/demo');
         login(data.user, data.token);
+      } else {
+        setStandalone(false);
+        localStorage.removeItem('standalone');
       }
     } catch (e) {
-      // 非独立模式或请求失败
+      // 请求失败（后端未启动、超时等）不改变 standalone，保证下面 finally 会执行
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const login = (userData, tokenStr) => {
@@ -50,12 +65,18 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(userData));
   };
 
-  const logout = () => {
+  const logout = useCallback(async () => {
+    // 先通知服务端使 token 失效（忽略失败，确保客户端总能登出）
+    try {
+      await authAPI.logout();
+    } catch {
+      // 网络错误或 token 已过期 — 不阻塞登出流程
+    }
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, token, loading, login, logout, standalone }}>

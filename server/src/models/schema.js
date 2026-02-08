@@ -9,10 +9,16 @@ function initDatabase() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       estimated_level TEXT DEFAULT 'unknown',
+      target_level TEXT DEFAULT 'none',
       total_articles_read INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 兼容旧数据库：如果 target_level 列不存在则添加
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN target_level TEXT DEFAULT 'none'`);
+  } catch { /* 列已存在，忽略 */ }
 
   // 文章表
   db.exec(`
@@ -54,16 +60,17 @@ function initDatabase() {
   `);
 
   // 单词释义（上下文相关，每篇文章可能带来不同释义）
+  // article_id 可为 NULL，表示手动添加的释义或文章已删除
   db.exec(`
     CREATE TABLE IF NOT EXISTS word_meanings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       vocabulary_id INTEGER NOT NULL,
-      article_id INTEGER NOT NULL,
+      article_id INTEGER,
       meaning TEXT NOT NULL,
       context_sentence TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (vocabulary_id) REFERENCES vocabulary(id) ON DELETE CASCADE,
-      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE SET NULL
     )
   `);
 
@@ -115,6 +122,41 @@ function initDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // ===== 兼容迁移：修复旧数据库中 word_meanings.article_id NOT NULL 问题 =====
+  try {
+    // 检查 word_meanings 表的 article_id 是否还是 NOT NULL
+    const tableInfo = db.prepare("PRAGMA table_info(word_meanings)").all();
+    const articleIdCol = tableInfo.find(c => c.name === 'article_id');
+    if (articleIdCol && articleIdCol.notnull === 1) {
+      console.log('迁移：修复 word_meanings.article_id 为可 NULL...');
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS word_meanings_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vocabulary_id INTEGER NOT NULL,
+          article_id INTEGER,
+          meaning TEXT NOT NULL,
+          context_sentence TEXT DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (vocabulary_id) REFERENCES vocabulary(id) ON DELETE CASCADE,
+          FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE SET NULL
+        )
+      `);
+      // 迁移数据：将 article_id = 0 或不存在的外键转为 NULL
+      db.exec(`
+        INSERT INTO word_meanings_new (id, vocabulary_id, article_id, meaning, context_sentence, created_at)
+        SELECT id, vocabulary_id,
+          CASE WHEN article_id = 0 OR article_id NOT IN (SELECT id FROM articles) THEN NULL ELSE article_id END,
+          meaning, context_sentence, created_at
+        FROM word_meanings
+      `);
+      db.exec('DROP TABLE word_meanings');
+      db.exec('ALTER TABLE word_meanings_new RENAME TO word_meanings');
+      console.log('迁移完成：word_meanings.article_id 已改为可 NULL');
+    }
+  } catch (err) {
+    console.error('word_meanings 迁移出错（可忽略）:', err.message);
+  }
 
   // 创建索引
   db.exec(`
