@@ -204,8 +204,8 @@ function Vocabulary() {
                           <span className="text-[10px] text-surface-400 font-medium uppercase">{word.cetLevel === 'cet4' ? 'CET4' : 'CET6'}</span>
                         )}
                       </div>
-                      {/* 大纲释义 */}
-                      {word.dictMeaning && (
+                      {/* 大纲释义（展开详情时隐藏，避免与下方释义栏重复） */}
+                      {word.dictMeaning && !isExpanded && (
                         <div className="text-[12px] text-surface-500 mt-0.5 truncate">{word.dictMeaning}</div>
                       )}
                     </div>
@@ -252,7 +252,11 @@ function Vocabulary() {
                                         {m.context_sentence && <div className="text-[12px] text-surface-500 italic mt-0.5">"{m.context_sentence}"</div>}
                                         {m.article_title && <div className="text-[11px] text-surface-400 mt-0.5">来源：{m.article_title}</div>}
                                         <div className="flex gap-2 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                          <button type="button" onClick={(e) => { e.stopPropagation(); startEditMeaning(word.id, m) }} className="text-[11px] text-primary-500 hover:text-primary-600">编辑</button>
+                                          {m.id ? (
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); startEditMeaning(word.id, m) }} className="text-[11px] text-primary-500 hover:text-primary-600">编辑</button>
+                                          ) : (
+                                            <span className="text-[11px] text-surface-400">词典释义（只读）</span>
+                                          )}
                                           {m.id && (
                                             <button type="button" onClick={(e) => handleDeleteMeaning(word.id, m.id, e)} disabled={deleteMeaningLoading === m.id} className="text-[11px] text-red-500 hover:text-red-600 disabled:opacity-50">{deleteMeaningLoading === m.id ? '删除中...' : '删除'}</button>
                                           )}

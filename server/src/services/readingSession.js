@@ -89,7 +89,10 @@ function saveWordMeanings(userId, clickedWords, wordMeanings, articleId) {
   if (!wordMeanings) return;
 
   for (const word of clickedWords) {
-    if (!wordMeanings[word] || !wordMeanings[word].meaning) continue;
+    const meaningText = typeof wordMeanings[word]?.meaning === 'string'
+      ? wordMeanings[word].meaning.trim()
+      : '';
+    if (!meaningText) continue;
 
     const vocab = db.prepare(
       'SELECT id FROM vocabulary WHERE user_id = ? AND word = ?'
@@ -109,7 +112,7 @@ function saveWordMeanings(userId, clickedWords, wordMeanings, articleId) {
       `).run(
         vocab.id,
         articleId,
-        wordMeanings[word].meaning,
+        meaningText,
         wordMeanings[word].context_sentence || ''
       );
     }

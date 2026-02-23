@@ -29,14 +29,19 @@ app.use(helmet({
 app.disable('x-powered-by');
 
 // CORS: 限制允许的来源
+// 生产环境建议显式配置 CORS_ORIGINS；若未配置则回退为允许任意来源（便于单域名一体化部署）
 const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000']; // 开发默认值
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+  : null;
 
 app.use(cors({
   origin: (origin, callback) => {
     // 允许无 origin 的请求（如同源请求、curl、移动端等）
     if (!origin) return callback(null, true);
+    // 未配置白名单时，允许任意来源（部署后请尽量配置 CORS_ORIGINS）
+    if (!allowedOrigins) {
+      return callback(null, true);
+    }
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
@@ -77,6 +82,9 @@ initDatabase();
 
 // ===== 独立模式配置 =====
 const isStandalone = process.env.STANDALONE === 'true';
+if (isProduction && !process.env.CORS_ORIGINS) {
+  console.warn('警告：生产环境未设置 CORS_ORIGINS，当前允许任意来源。建议尽快配置为正式域名。');
+}
 app.get('/api/config', (req, res) => {
   res.json({ standalone: isStandalone });
 });

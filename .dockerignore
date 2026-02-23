@@ -1,0 +1,13 @@
+.git
+.gitignore
+.DS_Store
+**/.DS_Store
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+server/data
+server/vocab.db
+server/vocab.db-shm
+server/vocab.db-wal
+*.log

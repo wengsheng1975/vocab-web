@@ -925,12 +925,16 @@ function getRegularCandidates(w) {
     results.push({ lemma: base, form: '现在分词' });         // playing → play (will be play + ing → playing)
   }
 
-  // -ed: loved → love, played → play, stopped → stop
-  if (w.endsWith('ed') && w.length > 3 && !w.endsWith('eed')) {
+  // -ed: loved → love, played → play, stopped → stop, agreed → agree
+  if (w.endsWith('ed') && w.length > 3) {
     const base = w.slice(0, -2);
     // 双写: stopped → stop
     if (base.length >= 2 && base[base.length - 1] === base[base.length - 2]) {
       results.push({ lemma: base.slice(0, -1), form: '过去式/过去分词' });
+    }
+    // 处理 -eed: agreed → agree
+    if (w.endsWith('eed') && w.length > 4) {
+      results.push({ lemma: w.slice(0, -1), form: '过去式/过去分词' });
     }
     results.push({ lemma: w.slice(0, -1), form: '过去式/过去分词' });  // loved → love (去 d)
     results.push({ lemma: base, form: '过去式/过去分词' });            // played → play (去 ed)

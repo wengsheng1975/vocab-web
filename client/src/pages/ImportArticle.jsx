@@ -121,7 +121,38 @@ function ImportArticle() {
     if (!text || text.trim().length < 3) { setTitleIssues([]); return }
     titleDebounceRef.current = setTimeout(async () => {
       setCheckingTitle(true)
-      try { const { data } = await articlesAPI.grammarCheck(text); setTitleIssues((data.issues || []).filter(i => i.severity === 'warning')) }
+      try {
+        const { data } = await articlesAPI.grammarCheck(text)
+        const titleText = String(text || '').trimEnd()
+        const titleWarnings = (data.issues || []).filter((i) => {
+          if (i.severity !== 'warning') return false
+          const rule = String(i.rule || '').toUpperCase()
+          const message = String(i.message || '').toLowerCase()
+          const suggestions = Array.isArray(i.suggestions) ? i.suggestions : []
+          const offset = Number(i.offset) || 0
+          const length = Number(i.length) || 0
+          const nearEnd = offset + length >= Math.max(0, titleText.length - 2)
+          const suggestOnlyEndPunct = suggestions.length > 0 && suggestions.every((s) => /^[.?!。！？]+$/.test(String(s || '')))
+          // 标题通常不要求句末标点，过滤掉此类提示（含 . ? !）
+          if (rule.includes('MISSING_END_PUNCT') || rule.includes('PARAGRAPH_END') || rule.includes('SENTENCE_END')) return false
+          if (message.includes('文章末尾') || message.includes('句号') || message.includes('问号') || message.includes('感叹号')) return false
+          if (message.includes('end with') || message.includes('end of sentence') || message.includes('punctuation')) return false
+          if (nearEnd && suggestOnlyEndPunct) return false
+          return true
+        })
+        // 标题以句号或逗号结尾时，给出专门修正提醒；以 ? 或 ! 结尾不提醒
+        if (/[。.,，]$/.test(titleText)) {
+          titleWarnings.push({
+            offset: titleText.length - 1,
+            length: 1,
+            message: '标题结尾不建议使用句号或逗号，建议删除',
+            rule: 'TITLE_END_PERIOD_OR_COMMA',
+            severity: 'warning',
+            suggestions: [''],
+          })
+        }
+        setTitleIssues(titleWarnings)
+      }
       catch {} finally { setCheckingTitle(false) }
     }, 1500)
   }, [])
@@ -415,7 +446,18 @@ function ImportArticle() {
                       <div key={i} className="flex items-center gap-2 flex-wrap px-2.5 py-1.5 bg-red-50 rounded-md text-[12px] text-red-600">
                         <span>{issue.message}</span>
                         {issue.suggestions.length > 0 && <span className="flex gap-1 items-center text-surface-500">建议：{issue.suggestions.map((s, j) => (
-                          <button key={j} className="px-1.5 py-0.5 bg-primary-50 text-primary-700 rounded font-medium hover:bg-primary-100 transition-colors" onClick={() => { setTitle(title.substring(0, issue.offset) + s + title.substring(issue.offset + issue.length)) }}>{s}</button>
+                          <button
+                            key={j}
+                            type="button"
+                            className="px-1.5 py-0.5 bg-primary-50 text-primary-700 rounded font-medium hover:bg-primary-100 transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setTitle(title.substring(0, issue.offset) + s + title.substring(issue.offset + issue.length))
+                            }}
+                          >
+                            {s === '' ? '删除' : s}
+                          </button>
                         ))}</span>}
                       </div>
                     ))}

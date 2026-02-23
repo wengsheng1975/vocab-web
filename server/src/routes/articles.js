@@ -1074,15 +1074,18 @@ router.post('/:id/finish', validateIdParam, (req, res) => {
 
           newWordsCount++;
 
-          // 如果提供了释义，存入 word_meanings
-          if (wordMeanings && wordMeanings[word]) {
+          // 如果提供了有效释义，存入 word_meanings
+          const meaningText = typeof wordMeanings?.[word]?.meaning === 'string'
+            ? wordMeanings[word].meaning.trim()
+            : '';
+          if (meaningText) {
             db.prepare(`
               INSERT INTO word_meanings (vocabulary_id, article_id, meaning, context_sentence)
               VALUES (?, ?, ?, ?)
             `).run(
               result.lastInsertRowid,
               articleId,
-              wordMeanings[word].meaning || '',
+              meaningText,
               wordMeanings[word].context_sentence || ''
             );
           }
@@ -1125,14 +1128,17 @@ router.post('/:id/finish', validateIdParam, (req, res) => {
               'SELECT id FROM word_meanings WHERE vocabulary_id = ? AND article_id = ?'
             ).get(vocab.id, articleId);
 
-            if (!existingMeaning && wordMeanings[word].meaning) {
+            const meaningText = typeof wordMeanings[word].meaning === 'string'
+              ? wordMeanings[word].meaning.trim()
+              : '';
+            if (!existingMeaning && meaningText) {
               db.prepare(`
                 INSERT INTO word_meanings (vocabulary_id, article_id, meaning, context_sentence)
                 VALUES (?, ?, ?, ?)
               `).run(
                 vocab.id,
                 articleId,
-                wordMeanings[word].meaning,
+                meaningText,
                 wordMeanings[word].context_sentence || ''
               );
             }
@@ -1296,6 +1302,13 @@ router.delete('/:id', validateIdParam, (req, res) => {
 
   // 删除该文章的点击记录
   db.prepare('DELETE FROM article_clicked_words WHERE article_id = ? AND user_id = ?').run(articleId, userId);
+
+  // 显式清理阅读进度（兼容旧库中可能缺失外键级联的情况）
+  try {
+    db.prepare('DELETE FROM reading_progress WHERE article_id = ? AND user_id = ?').run(articleId, userId);
+  } catch {
+    // reading_progress 表可能不存在，忽略
+  }
 
   // 删除文章本身（vocabulary 表不受影响）
   db.prepare('DELETE FROM articles WHERE id = ? AND user_id = ?').run(articleId, userId);

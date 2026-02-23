@@ -2,10 +2,158 @@ const express = require('express');
 const db = require('../config/db');
 const { authenticateToken, validateIdParam } = require('../middleware/auth');
 const { isOutOfScope, getWordCETLevel, getWordMorphInfo } = require('../utils/cetWords');
-const { lookupDict } = require('../utils/cetDictionary');
+const { lookupDict, DICT } = require('../utils/cetDictionary');
 
 const router = express.Router();
 router.use(authenticateToken);
+
+function resolveDictEntryWithMorph(wordText, morph) {
+  const normalizedWord = String(wordText || '').toLowerCase().trim();
+  if (!normalizedWord) {
+    return { entry: null, fromLemma: false, directHit: false };
+  }
+
+  // 先查原词，避免 lookupDict 内部词形还原掩盖“是否来自原型”的信息
+  if (DICT[normalizedWord]) {
+    return { entry: DICT[normalizedWord], fromLemma: false, directHit: true };
+  }
+
+  const lemma = String(morph?.lemma || '').toLowerCase().trim();
+  if (lemma && lemma !== normalizedWord && DICT[lemma]) {
+    return { entry: DICT[lemma], fromLemma: true, directHit: false };
+  }
+
+  // 兜底：沿用词典工具的内部查找逻辑
+  const fallback = lookupDict(normalizedWord);
+  return {
+    entry: fallback,
+    fromLemma: Boolean(fallback && lemma && lemma !== normalizedWord),
+    directHit: false,
+  };
+}
+
+function extractAdjectiveMeaning(baseMeaning) {
+  const text = String(baseMeaning || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+
+  const posBoundary = '(?:n\\.|v\\.|vi\\.|vt\\.|a\\.|adj\\.|ad\\.|adv\\.|pron\\.|prep\\.|conj\\.|num\\.|int\\.|aux\\.|art\\.)';
+  const re = new RegExp(`(a\\.|adj\\.)(.*?)(?=\\s${posBoundary}|$)`, 'i');
+  const match = text.match(re);
+  if (!match) return '';
+
+  const marker = match[1].toLowerCase() === 'adj.' ? 'adj.' : 'a.';
+  const content = String(match[2] || '').trim();
+  return content ? `${marker}${content}` : marker;
+}
+
+function getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit) {
+  const baseMeaning = String(dictEntry?.cn || '').trim();
+  const normalizedWord = String(wordText || '').toLowerCase().trim();
+  const lemma = String(morph?.lemma || '').toLowerCase().trim();
+  const form = String(morph?.form || '');
+  const isComparative = form.includes('比较级');
+  const isSuperlative = form.includes('最高级');
+
+  // 比较级/最高级单独规则：
+  // 1) 只保留形容词义（a./adj.）
+  // 2) 大纲无形容词义时，兜底（更）/（最）+ lemma
+  if (isComparative || isSuperlative) {
+    const adjectiveMeaning = extractAdjectiveMeaning(baseMeaning);
+    if (adjectiveMeaning) {
+      if (directHit) return adjectiveMeaning;
+      return isComparative ? `（更）${adjectiveMeaning}` : `（最）${adjectiveMeaning}`;
+    }
+
+    if (lemma) {
+      return isComparative ? `（更）${lemma}` : `（最）${lemma}`;
+    }
+  }
+
+  const shouldMarkLemma = Boolean(lemma && lemma !== normalizedWord && (fromLemma || morph?.form));
+
+  if (baseMeaning) {
+    return shouldMarkLemma ? `${baseMeaning}（原型：${lemma}）` : baseMeaning;
+  }
+
+  // 比较级/最高级在词典缺失时，也保持有内容
+  if (!baseMeaning && isComparative && lemma) {
+    return `（更）${lemma}`;
+  }
+  if (!baseMeaning && isSuperlative && lemma) {
+    return `（最）${lemma}`;
+  }
+
+  // 其他词形在词典缺失时，给出原型提示，避免释义栏为空
+  if (shouldMarkLemma) {
+    return `词典暂无释义（原型：${lemma}）`;
+  }
+
+  // 纲内词兜底：即使词典遗漏，也不返回空释义
+  const level = getWordCETLevel(normalizedWord);
+  if (level !== 'beyond') {
+    return '纲内词（词典待补充）';
+  }
+
+  return '';
+}
+
+function getDisplayDictMeaning(dictEntry, wordText, morph, directHit) {
+  const baseMeaning = String(dictEntry?.cn || '').trim();
+  const normalizedWord = String(wordText || '').toLowerCase().trim();
+  const lemma = String(morph?.lemma || '').toLowerCase().trim();
+  const form = String(morph?.form || '');
+  const isComparative = form.includes('比较级');
+  const isSuperlative = form.includes('最高级');
+
+  if (!baseMeaning) {
+    if ((isComparative || isSuperlative) && lemma) {
+      return isComparative ? `（更）${lemma}` : `（最）${lemma}`;
+    }
+    const level = getWordCETLevel(normalizedWord);
+    return level !== 'beyond' ? '纲内词（词典待补充）' : null;
+  }
+
+  if (isComparative || isSuperlative) {
+    const adjectiveMeaning = extractAdjectiveMeaning(baseMeaning);
+    if (adjectiveMeaning) {
+      if (directHit) return adjectiveMeaning;
+      return isComparative ? `（更）${adjectiveMeaning}` : `（最）${adjectiveMeaning}`;
+    }
+    if (lemma) {
+      return isComparative ? `（更）${lemma}` : `（最）${lemma}`;
+    }
+  }
+
+  return baseMeaning;
+}
+
+function withFallbackMeaning(meanings, dictEntry, wordText, morph, fromLemma, directHit) {
+  const normalizedMeanings = (meanings || []).filter(
+    (m) => String(m?.meaning || '').trim().length > 0
+  );
+  const hasUsableMeaning = normalizedMeanings.length > 0;
+  if (hasUsableMeaning) return normalizedMeanings;
+
+  const fallbackMeaning = getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit);
+  if (!fallbackMeaning) return normalizedMeanings;
+
+  const lemma = String(morph?.lemma || '').toLowerCase().trim();
+  const form = String(morph?.form || '');
+  const isComparativeOrSuperlative = form.includes('比较级') || form.includes('最高级');
+
+  return [{
+    id: null,
+    vocabulary_id: null,
+    article_id: null,
+    meaning: fallbackMeaning,
+    context_sentence: '',
+    created_at: null,
+    article_title: !isComparativeOrSuperlative && lemma && lemma !== String(wordText || '').toLowerCase().trim()
+      ? `词典释义（原型：${lemma}）`
+      : '词典释义',
+    is_dict_fallback: true,
+  }];
+}
 
 // 获取生词库（按词频排序）
 router.get('/', (req, res) => {
@@ -65,7 +213,7 @@ router.get('/', (req, res) => {
 
   // 获取每个单词的释义 + 超纲标记
   const wordsWithMeanings = words.map(word => {
-    const meanings = db.prepare(`
+    const dbMeanings = db.prepare(`
       SELECT wm.*, a.title as article_title
       FROM word_meanings wm
       LEFT JOIN articles a ON wm.article_id = a.id
@@ -74,7 +222,9 @@ router.get('/', (req, res) => {
     `).all(word.id);
 
     const morph = getWordMorphInfo(word.word);
-    const dictEntry = lookupDict(word.word);
+    const { entry: dictEntry, fromLemma, directHit } = resolveDictEntryWithMorph(word.word, morph);
+    const meanings = withFallbackMeaning(dbMeanings, dictEntry, word.word, morph, fromLemma, directHit);
+
     return {
       ...word,
       meanings,
@@ -83,7 +233,7 @@ router.get('/', (req, res) => {
       lemma: morph.lemma,
       wordForm: morph.form,
       dictPhonetic: dictEntry?.ph || null,   // 大纲美式音标
-      dictMeaning: dictEntry?.cn || null,    // 大纲中文释义
+      dictMeaning: getDisplayDictMeaning(dictEntry, word.word, morph, directHit),
     };
   });
 
@@ -143,7 +293,7 @@ router.get('/:id', validateIdParam, (req, res) => {
     return res.status(404).json({ error: '单词不存在' });
   }
 
-  const meanings = db.prepare(`
+  const dbMeanings = db.prepare(`
     SELECT wm.*, a.title as article_title
     FROM word_meanings wm
     LEFT JOIN articles a ON wm.article_id = a.id
@@ -151,7 +301,19 @@ router.get('/:id', validateIdParam, (req, res) => {
     ORDER BY wm.created_at DESC
   `).all(vocabId);
 
-  res.json({ ...word, meanings });
+  const morph = getWordMorphInfo(word.word);
+  const { entry: dictEntry, fromLemma, directHit } = resolveDictEntryWithMorph(word.word, morph);
+  const meanings = withFallbackMeaning(dbMeanings, dictEntry, word.word, morph, fromLemma, directHit);
+
+  res.json({
+    ...word,
+    meanings,
+    cetLevel: getWordCETLevel(word.word),
+    lemma: morph.lemma,
+    wordForm: morph.form,
+    dictPhonetic: dictEntry?.ph || null,
+    dictMeaning: getDisplayDictMeaning(dictEntry, word.word, morph, directHit),
+  });
 });
 
 // 更新生词信息（音标、释义等）

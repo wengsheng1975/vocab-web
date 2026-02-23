@@ -26,14 +26,17 @@ function Dashboard() {
 
   const loadData = async () => {
     try {
-      const [overviewRes, suggestionsRes, unfinishedRes] = await Promise.all([
+      const [overviewRes, suggestionsRes, unfinishedRes, articlesRes] = await Promise.all([
         statsAPI.overview(),
         statsAPI.reviewSuggestions(),
         articlesAPI.getUnfinished().catch(() => ({ data: { unfinished: [] } })),
+        articlesAPI.getAll().catch(() => ({ data: { articles: [] } })),
       ])
       setData(overviewRes.data)
       setReviewSuggestions(suggestionsRes.data.suggestions || [])
-      setUnfinished(unfinishedRes.data.unfinished || [])
+      const existingArticleIds = new Set((articlesRes.data?.articles || []).map((a) => a.id))
+      const safeUnfinished = (unfinishedRes.data?.unfinished || []).filter((a) => existingArticleIds.has(a.id))
+      setUnfinished(safeUnfinished)
       setTargetLevel(overviewRes.data?.user?.target_level || 'none')
     } catch (err) {
       console.error('加载数据失败:', err)

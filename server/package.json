@@ -5,7 +5,9 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "node --watch src/app.js"
+    "dev": "node --watch src/app.js",
+    "dict:audit": "node scripts/dict-audit.js",
+    "dict:audit:json": "node scripts/dict-audit.js --json"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
