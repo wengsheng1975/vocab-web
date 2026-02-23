@@ -7,6 +7,7 @@ const db = require('../config/db');
 const { authenticateToken, validateIdParam } = require('../middleware/auth');
 const { extractWords, assessDifficulty, isDifficultyAppropriate } = require('../utils/difficulty');
 const { getSpellingSuggestions } = require('../utils/spellCheck');
+const { listSources: listCrawlerSources, fetchFeedPreview, fetchArticleByUrl } = require('../services/crawler/fetcher');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -155,6 +156,157 @@ function localGrammarCheck(text) {
   return issues;
 }
 
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+}
+
+function normalizeImportedText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function randomPick(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function resolveCrawlerRecommendedLevel(userId) {
+  const user = db.prepare(`
+    SELECT estimated_level, target_level
+    FROM users
+    WHERE id = ?
+  `).get(userId);
+
+  const estimated = user?.estimated_level || 'unknown';
+  const target = user?.target_level || 'none';
+
+  if (estimated !== 'unknown') {
+    return { level: estimated, source: 'estimated_level' };
+  }
+
+  // 首次使用：按目标级别给一个随机基准等级，用于探索用户阶段水平
+  if (target === 'cet6') {
+    return { level: randomPick(['B1', 'B2', 'C1']), source: 'target_level_random(cet6)' };
+  }
+  if (target === 'cet4') {
+    return { level: randomPick(['A2', 'B1', 'B2']), source: 'target_level_random(cet4)' };
+  }
+  return { level: randomPick(['A2', 'B1']), source: 'target_level_random(none)' };
+}
+
+function parseOptionalFolderId(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+  const num = Number(rawValue);
+  if (!Number.isInteger(num) || num <= 0) {
+    throw badRequest('folderId 必须是正整数或 null');
+  }
+  return num;
+}
+
+function normalizeFolderName(rawName) {
+  const safeName = typeof rawName === 'string' ? rawName.trim() : '';
+  if (!safeName) {
+    throw badRequest('文件夹名称不能为空');
+  }
+  if (safeName.length > 30) {
+    throw badRequest('文件夹名称不能超过 30 个字符');
+  }
+  return safeName;
+}
+
+function getOwnedFolder(userId, folderId) {
+  return db.prepare(
+    'SELECT id, name FROM article_folders WHERE id = ? AND user_id = ?'
+  ).get(folderId, userId);
+}
+
+function importArticleForUser({
+  userId,
+  title,
+  content,
+  sourceSite = '',
+  sourceUrl = '',
+  sourceAuthor = '',
+  publishedAt = null,
+  importedVia = 'manual',
+}) {
+  const safeTitle = typeof title === 'string' ? title.trim() : '';
+  const safeContent = normalizeImportedText(content);
+  const safeSourceSite = typeof sourceSite === 'string' ? sourceSite.slice(0, 100) : '';
+  const safeSourceUrl = typeof sourceUrl === 'string' ? sourceUrl.trim().slice(0, 1000) : '';
+  const safeSourceAuthor = typeof sourceAuthor === 'string' ? sourceAuthor.trim().slice(0, 100) : '';
+  const safeImportedVia = typeof importedVia === 'string' ? importedVia.trim().slice(0, 20) : 'manual';
+
+  if (!safeTitle || !safeContent) {
+    throw badRequest('标题和内容都是必填项');
+  }
+  if (safeTitle.length > 200) {
+    throw badRequest('标题长度应在 1-200 字符之间');
+  }
+  if (safeContent.length > 500000) {
+    throw badRequest('文章内容不能为空，且不超过 50 万字符');
+  }
+
+  let safePublishedAt = null;
+  if (publishedAt) {
+    const date = new Date(publishedAt);
+    if (!Number.isNaN(date.getTime())) safePublishedAt = date.toISOString();
+  }
+
+  const difficulty = assessDifficulty(safeContent);
+  const words = extractWords(safeContent);
+  const uniqueWords = [...new Set(words)];
+
+  const user = db.prepare('SELECT estimated_level FROM users WHERE id = ?').get(userId);
+  const userLevel = user?.estimated_level ?? 'unknown';
+  const appropriateness = isDifficultyAppropriate(difficulty.level, userLevel);
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO articles (
+        user_id, title, content, difficulty_level, difficulty_score, word_count, unique_word_count,
+        source_site, source_url, source_author, published_at, imported_via
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      safeTitle,
+      safeContent,
+      difficulty.level,
+      difficulty.score,
+      words.length,
+      uniqueWords.length,
+      safeSourceSite,
+      safeSourceUrl,
+      safeSourceAuthor,
+      safePublishedAt,
+      safeImportedVia,
+    );
+
+    const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(result.lastInsertRowid);
+    return { article, difficulty, appropriateness, duplicate: false };
+  } catch (err) {
+    const message = String(err?.message || '');
+    const isSourceUrlUniqueConflict =
+      safeSourceUrl &&
+      (err?.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+        message.includes('idx_articles_user_source_url_unique') ||
+        message.includes('UNIQUE constraint failed: articles.user_id, articles.source_url'));
+
+    if (isSourceUrlUniqueConflict) {
+      const article = db.prepare(
+        'SELECT * FROM articles WHERE user_id = ? AND source_url = ?'
+      ).get(userId, safeSourceUrl);
+      return { article, duplicate: true };
+    }
+    throw err;
+  }
+}
+
 // 语法检查 API
 router.post('/grammar-check', async (req, res) => {
   const { text } = req.body;
@@ -219,45 +371,361 @@ router.post('/grammar-check', async (req, res) => {
   }
 });
 
-// 导入文章
+// 导入文章（手动粘贴/编辑器输入）
 router.post('/import', (req, res) => {
   const userId = req.user.id;
   const { title, content } = req.body;
 
-  if (!title || !content) {
-    return res.status(400).json({ error: '标题和内容都是必填项' });
+  try {
+    const imported = importArticleForUser({
+      userId,
+      title,
+      content,
+      importedVia: 'manual',
+    });
+    res.status(201).json(imported);
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) {
+      console.error('导入文章失败:', err);
+      return res.status(500).json({ error: '导入失败，请稍后重试' });
+    }
+    return res.status(status).json({ error: err.message });
+  }
+});
+
+// 爬虫来源列表
+router.get('/crawl-sources', (req, res) => {
+  res.json({ sources: listCrawlerSources() });
+});
+
+// 抓取来源预览（先拿 RSS 列表）
+router.post('/crawl-preview', async (req, res) => {
+  const { source = 'chinadaily', limit = 5 } = req.body || {};
+  try {
+    const levelHint = resolveCrawlerRecommendedLevel(req.user.id);
+    const data = await fetchFeedPreview(source, limit, { userLevel: levelHint.level });
+    data.recommendation = {
+      ...(data.recommendation || {}),
+      userLevelSource: levelHint.source,
+    };
+    res.json(data);
+  } catch (err) {
+    const msg = err.message || '抓取预览失败';
+    const status = msg.includes('不支持') ? 400 : 502;
+    res.status(status).json({ error: msg });
+  }
+});
+
+// 通过 URL 抓取并导入文章
+router.post('/import-url', async (req, res) => {
+  const userId = req.user.id;
+  const { url, title } = req.body || {};
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: '请提供文章链接' });
   }
 
-  // 输入长度校验
-  if (typeof title !== 'string' || title.trim().length === 0 || title.length > 200) {
-    return res.status(400).json({ error: '标题长度应在 1-200 字符之间' });
+  try {
+    const fetched = await fetchArticleByUrl(url);
+    const imported = importArticleForUser({
+      userId,
+      title: (typeof title === 'string' && title.trim()) ? title.trim() : fetched.title,
+      content: fetched.content,
+      sourceSite: fetched.sourceSite,
+      sourceUrl: fetched.sourceUrl,
+      sourceAuthor: fetched.sourceAuthor,
+      publishedAt: fetched.publishedAt,
+      importedVia: 'url',
+    });
+
+    if (imported.duplicate) {
+      return res.status(409).json({
+        error: '该文章来源已导入',
+        article: imported.article,
+      });
+    }
+    return res.status(201).json(imported);
+  } catch (err) {
+    const msg = err.message || '链接抓取失败';
+    const status = err.status || (msg.includes('URL') || msg.includes('白名单') ? 400 : 502);
+    if (status >= 500) console.error('URL 导入失败:', err);
+    return res.status(status).json({ error: msg });
   }
-  if (typeof content !== 'string' || content.trim().length === 0 || content.length > 500000) {
-    return res.status(400).json({ error: '文章内容不能为空，且不超过 50 万字符' });
+});
+
+// 按来源抓取并批量导入
+router.post('/crawl-source', async (req, res) => {
+  const userId = req.user.id;
+  const { source = 'chinadaily', limit = 3 } = req.body || {};
+  const safeLimit = Math.max(1, Math.min(10, parseInt(limit, 10) || 3));
+
+  try {
+    const levelHint = resolveCrawlerRecommendedLevel(userId);
+    const preview = await fetchFeedPreview(source, safeLimit, { userLevel: levelHint.level });
+    const imported = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const item of preview.items) {
+      try {
+        const fetched = await fetchArticleByUrl(item.url, source);
+        const inserted = importArticleForUser({
+          userId,
+          title: item.title || fetched.title,
+          content: fetched.content,
+          sourceSite: fetched.sourceSite,
+          sourceUrl: fetched.sourceUrl,
+          sourceAuthor: fetched.sourceAuthor,
+          publishedAt: item.publishedAt || fetched.publishedAt,
+          importedVia: 'crawler',
+        });
+
+        if (inserted.duplicate) {
+          skipped.push({
+            title: item.title || fetched.title,
+            url: item.url,
+            reason: 'duplicate',
+            articleId: inserted.article?.id || null,
+          });
+          continue;
+        }
+
+        imported.push({
+          id: inserted.article.id,
+          title: inserted.article.title,
+          url: item.url,
+        });
+      } catch (err) {
+        failed.push({
+          title: item.title || '',
+          url: item.url,
+          reason: err.message || '抓取失败',
+        });
+      }
+    }
+
+    return res.json({
+      source: preview.source,
+      recommendation: {
+        ...(preview.recommendation || {}),
+        userLevelSource: levelHint.source,
+      },
+      summary: {
+        requested: safeLimit,
+        fetched: preview.items.length,
+        imported: imported.length,
+        skipped: skipped.length,
+        failed: failed.length,
+      },
+      imported,
+      skipped,
+      failed,
+    });
+  } catch (err) {
+    const msg = err.message || '批量抓取失败';
+    const status = msg.includes('不支持') ? 400 : 502;
+    return res.status(status).json({ error: msg });
+  }
+});
+
+// 获取用户文件夹列表
+router.get('/folders', (req, res) => {
+  const userId = req.user.id;
+
+  const folders = db.prepare(`
+    SELECT id, name, created_at
+    FROM article_folders
+    WHERE user_id = ?
+    ORDER BY created_at ASC
+  `).all(userId);
+
+  const countRows = db.prepare(`
+    SELECT folder_id, COUNT(*) AS count
+    FROM articles
+    WHERE user_id = ?
+    GROUP BY folder_id
+  `).all(userId);
+
+  const countMap = new Map();
+  for (const row of countRows) {
+    const key = row.folder_id === null ? 'null' : String(row.folder_id);
+    countMap.set(key, row.count);
   }
 
-  // 评估文章难度
-  const difficulty = assessDifficulty(content);
-  const words = extractWords(content);
-  const uniqueWords = [...new Set(words)];
+  res.json({
+    folders: folders.map((f) => ({
+      ...f,
+      articleCount: countMap.get(String(f.id)) || 0,
+    })),
+    uncategorizedCount: countMap.get('null') || 0,
+  });
+});
 
-  // 获取用户当前水平（用户必存在，因已通过 authenticateToken）
-  const user = db.prepare('SELECT estimated_level FROM users WHERE id = ?').get(userId);
-  const userLevel = user?.estimated_level ?? 'unknown';
-  const appropriateness = isDifficultyAppropriate(difficulty.level, userLevel);
+// 创建自定义文件夹
+router.post('/folders', (req, res) => {
+  const userId = req.user.id;
+  let safeName = '';
+  try {
+    safeName = normalizeFolderName(req.body?.name);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
 
-  // 存入数据库
+  const duplicate = db.prepare(
+    'SELECT id FROM article_folders WHERE user_id = ? AND LOWER(name) = LOWER(?)'
+  ).get(userId, safeName);
+  if (duplicate) {
+    return res.status(409).json({ error: '该文件夹名称已存在' });
+  }
+
   const result = db.prepare(`
-    INSERT INTO articles (user_id, title, content, difficulty_level, difficulty_score, word_count, unique_word_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(userId, title, content, difficulty.level, difficulty.score, words.length, uniqueWords.length);
+    INSERT INTO article_folders (user_id, name)
+    VALUES (?, ?)
+  `).run(userId, safeName);
 
-  const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(result.lastInsertRowid);
+  const folder = db.prepare(
+    'SELECT id, name, created_at FROM article_folders WHERE id = ?'
+  ).get(result.lastInsertRowid);
 
   res.status(201).json({
-    article,
-    difficulty,
-    appropriateness,
+    message: '文件夹创建成功',
+    folder: { ...folder, articleCount: 0 },
+  });
+});
+
+// 重命名文件夹
+router.put('/folders/:id', validateIdParam, (req, res) => {
+  const userId = req.user.id;
+  const folderId = Number(req.params.id);
+
+  const folder = getOwnedFolder(userId, folderId);
+  if (!folder) {
+    return res.status(404).json({ error: '文件夹不存在' });
+  }
+
+  let safeName = '';
+  try {
+    safeName = normalizeFolderName(req.body?.name);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+
+  const isSameName = folder.name.trim().toLowerCase() === safeName.toLowerCase();
+  if (isSameName) {
+    return res.json({
+      message: '文件夹名称未变化',
+      folder: { id: folder.id, name: folder.name },
+    });
+  }
+
+  const duplicate = db.prepare(`
+    SELECT id
+    FROM article_folders
+    WHERE user_id = ? AND LOWER(name) = LOWER(?) AND id <> ?
+  `).get(userId, safeName, folderId);
+
+  if (duplicate) {
+    return res.status(409).json({ error: '该文件夹名称已存在' });
+  }
+
+  db.prepare(`
+    UPDATE article_folders
+    SET name = ?
+    WHERE id = ? AND user_id = ?
+  `).run(safeName, folderId, userId);
+
+  const updated = db.prepare(`
+    SELECT id, name, created_at
+    FROM article_folders
+    WHERE id = ? AND user_id = ?
+  `).get(folderId, userId);
+
+  const countRow = db.prepare(`
+    SELECT COUNT(*) AS articleCount
+    FROM articles
+    WHERE user_id = ? AND folder_id = ?
+  `).get(userId, folderId);
+
+  res.json({
+    message: '文件夹重命名成功',
+    folder: {
+      ...updated,
+      articleCount: countRow?.articleCount || 0,
+    },
+  });
+});
+
+// 删除文件夹（文件夹内文章自动回到未分类）
+router.delete('/folders/:id', validateIdParam, (req, res) => {
+  const userId = req.user.id;
+  const folderId = Number(req.params.id);
+
+  const folder = getOwnedFolder(userId, folderId);
+  if (!folder) {
+    return res.status(404).json({ error: '文件夹不存在' });
+  }
+
+  let movedCount = 0;
+  const txn = db.transaction(() => {
+    movedCount = db.prepare(`
+      UPDATE articles
+      SET folder_id = NULL
+      WHERE user_id = ? AND folder_id = ?
+    `).run(userId, folderId).changes;
+
+    db.prepare('DELETE FROM article_folders WHERE id = ? AND user_id = ?').run(folderId, userId);
+  });
+  txn();
+
+  res.json({
+    message: '文件夹已删除，文章已移回未分类',
+    movedCount,
+  });
+});
+
+// 拖拽移动文章到文件夹（folderId 为 null 表示移到未分类）
+router.post('/:id/move-folder', validateIdParam, (req, res) => {
+  const userId = req.user.id;
+  const articleId = Number(req.params.id);
+
+  let folderId = null;
+  try {
+    folderId = parseOptionalFolderId(req.body?.folderId);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  let folderName = null;
+  if (folderId !== null) {
+    const folder = getOwnedFolder(userId, folderId);
+    if (!folder) {
+      return res.status(404).json({ error: '目标文件夹不存在' });
+    }
+    folderName = folder.name;
+  }
+
+  db.prepare(`
+    UPDATE articles
+    SET folder_id = ?
+    WHERE id = ? AND user_id = ?
+  `).run(folderId, articleId, userId);
+
+  const updated = db.prepare(`
+    SELECT a.id, a.title, a.folder_id
+    FROM articles a
+    WHERE a.id = ? AND a.user_id = ?
+  `).get(articleId, userId);
+
+  res.json({
+    message: folderId === null ? '已移到未分类' : `已移到文件夹「${folderName}」`,
+    article: { ...updated, folder_name: folderName },
   });
 });
 
@@ -266,13 +734,49 @@ router.get('/', (req, res) => {
   const userId = req.user.id;
 
   const articles = db.prepare(`
-    SELECT id, title, difficulty_level, difficulty_score, word_count, unique_word_count,
-           unknown_word_count, unknown_percentage, is_completed, created_at, completed_at
-    FROM articles WHERE user_id = ?
-    ORDER BY created_at DESC
+    SELECT a.id, a.title, a.difficulty_level, a.difficulty_score, a.word_count, a.unique_word_count,
+           a.unknown_word_count, a.unknown_percentage, a.is_completed,
+           a.source_site, a.source_url, a.source_author, a.published_at, a.imported_via,
+           a.folder_id, f.name AS folder_name,
+           a.created_at, a.completed_at
+    FROM articles a
+    LEFT JOIN article_folders f ON a.folder_id = f.id
+    WHERE a.user_id = ?
+    ORDER BY a.created_at DESC
   `).all(userId);
 
   res.json({ articles });
+});
+
+// 未读完文章列表（Dashboard「继续阅读」用；须在 /:id 之前定义）
+router.get('/reading/unfinished', (req, res) => {
+  const userId = req.user.id;
+  const rows = db.prepare(`
+    SELECT id, title FROM articles
+    WHERE user_id = ? AND is_completed = 0
+    ORDER BY created_at DESC
+    LIMIT 20
+  `).all(userId);
+  // 若有 reading_progress 表可在此 JOIN 取 scroll_percentage；暂无则默认 0
+  let unfinished = rows.map(r => ({ id: r.id, title: r.title, scroll_percentage: 0 }));
+  try {
+    const withProgress = db.prepare(`
+      SELECT a.id, a.title, COALESCE(rp.scroll_percentage, 0) as scroll_percentage
+      FROM articles a
+      LEFT JOIN reading_progress rp ON rp.article_id = a.id AND rp.user_id = a.user_id
+      WHERE a.user_id = ? AND a.is_completed = 0
+      ORDER BY a.created_at DESC
+      LIMIT 20
+    `).all(userId);
+    unfinished = withProgress.map(r => ({
+      id: r.id,
+      title: r.title,
+      scroll_percentage: Math.round(Number(r.scroll_percentage) || 0),
+    }));
+  } catch {
+    // reading_progress 表可能不存在，沿用默认 0
+  }
+  res.json({ unfinished });
 });
 
 // 获取文章详情（用于阅读界面）
@@ -280,9 +784,12 @@ router.get('/:id', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const articleId = req.params.id;
 
-  const article = db.prepare(
-    'SELECT * FROM articles WHERE id = ? AND user_id = ?'
-  ).get(articleId, userId);
+  const article = db.prepare(`
+    SELECT a.*, f.name AS folder_name
+    FROM articles a
+    LEFT JOIN article_folders f ON a.folder_id = f.id
+    WHERE a.id = ? AND a.user_id = ?
+  `).get(articleId, userId);
 
   if (!article) {
     return res.status(404).json({ error: '文章不存在' });

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EnglishReader - 英语阅读学习平台 (演示版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .word-clicked {
+            background-color: #ef4444;
+            color: white;
+            padding: 2px 4px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .word-unknown {
+            background-color: #fbbf24;
+            color: #78350f;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-indigo-600">📚 EnglishReader</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-600">演示版</span>
+                    <button onclick="showLogin()" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700">登录</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容 -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <!-- 功能介绍 -->
+        <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+            <div class="px-4 py-5 sm:p-6">
+                <h2 class="text-lg leading-6 font-medium text-gray-900 mb-4">🎯 EnglishReader 功能演示</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="bg-indigo-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-indigo-900">📖 文章导入</h3>
+                        <p class="text-sm text-indigo-700 mt-1">粘贴英文文章，自动分析难度等级</p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-green-900">🖱️ 交互式阅读</h3>
+                        <p class="text-sm text-green-700 mt-1">点击不认识的单词，自动标红记录</p>
+                    </div>
+                    <div class="bg-yellow-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-yellow-900">📝 智能生词库</h3>
+                        <p class="text-sm text-yellow-700 mt-1">跨文章合并生词，按词频排序</p>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-purple-900">📊 掌握度追踪</h3>
+                        <p class="text-sm text-purple-700 mt-1">连续3次未点击自动标记为已掌握</p>
+                    </div>
+                    <div class="bg-pink-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-pink-900">📈 阅读报告</h3>
+                        <p class="text-sm text-pink-700 mt-1">生成详细的学习统计报告</p>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-blue-900">🎯 水平评估</h3>
+                        <p class="text-sm text-blue-700 mt-1">动态评估英语水平，生成趋势图</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 文章导入演示 -->
+        <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+            <div class="px-4 py-5 sm:p-6">
+                <h2 class="text-lg leading-6 font-medium text-gray-900 mb-4">📝 导入文章演示</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">粘贴英文文章：</label>
+                        <textarea id="articleInput" rows="6" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="在这里粘贴英文文章...">The Internet has revolutionized the way we communicate and access information. In today's digital age, people can connect with others across the globe instantly through various social media platforms and messaging applications. This unprecedented connectivity has transformed both personal and professional relationships, enabling real-time collaboration and sharing of ideas regardless of geographical boundaries.</textarea>
+                    </div>
+                    <div class="flex space-x-4">
+                        <button onclick="analyzeArticle()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">分析难度</button>
+                        <button onclick="startReading()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">开始阅读</button>
+                    </div>
+                    <div id="analysisResult" class="hidden mt-4 p-4 bg-blue-50 rounded-lg">
+                        <h3 class="font-semibold text-blue-900">📊 文章分析结果</h3>
+                        <div class="mt-2 text-sm text-blue-800">
+                            <p>• 难度等级：<span class="font-bold">B2 (中高级)</span></p>
+                            <p>• 总词数：<span class="font-bold">58</span> 词</p>
+                            <p>• 唯一词数：<span class="font-bold">42</span> 词</p>
+                            <p>• 预估生词率：<span class="font-bold">15%</span></p>
+                            <p>• 适合水平：<span class="font-bold">中级学习者</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 阅读界面演示 -->
+        <div id="readingSection" class="bg-white overflow-hidden shadow rounded-lg mb-6 hidden">
+            <div class="px-4 py-5 sm:p-6">
+                <h2 class="text-lg leading-6 font-medium text-gray-900 mb-4">📖 交互式阅读演示</h2>
+                <p class="text-sm text-gray-600 mb-4">👆 点击不认识的单词将其标红，系统会自动记录到生词库</p>
+                <div id="readingContent" class="prose max-w-none text-lg leading-relaxed">
+                    <!-- 阅读内容将在这里显示 -->
+                </div>
+                <div class="mt-6 flex space-x-4">
+                    <button onclick="finishReading()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">完成阅读</button>
+                    <button onclick="showVocabulary()" class="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700">查看生词</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 生词库演示 -->
+        <div id="vocabularySection" class="bg-white overflow-hidden shadow rounded-lg mb-6 hidden">
+            <div class="px-4 py-5 sm:p-6">
+                <h2 class="text-lg leading-6 font-medium text-gray-900 mb-4">📝 生词库演示</h2>
+                <div id="vocabularyList" class="space-y-2">
+                    <!-- 生词列表将在这里显示 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 学习报告演示 -->
+        <div id="reportSection" class="bg-white overflow-hidden shadow rounded-lg hidden">
+            <div class="px-4 py-5 sm:p-6">
+                <h2 class="text-lg leading-6 font-medium text-gray-900 mb-4">📊 阅读报告演示</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-indigo-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-indigo-900">本次阅读统计</h3>
+                        <div class="mt-3 space-y-2 text-sm">
+                            <p>• 阅读时间：<span class="font-bold">3分钟</span></p>
+                            <p>• 新增生词：<span class="font-bold" id="newWordsCount">0</span> 个</p>
+                            <p>• 点击次数：<span class="font-bold" id="clickCount">0</span> 次</p>
+                        </div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-green-900">学习建议</h3>
+                        <div class="mt-3 text-sm text-green-800">
+                            <p>• 建议复习今日生词</p>
+                            <p>• 推荐阅读同难度文章</p>
+                            <p>• 注意掌握高频词汇</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let clickedWords = new Set();
+        let vocabulary = [];
+
+        function showLogin() {
+            alert('演示版本无需登录，直接体验所有功能！');
+        }
+
+        function analyzeArticle() {
+            const text = document.getElementById('articleInput').value;
+            if (!text.trim()) {
+                alert('请先粘贴英文文章');
+                return;
+            }
+            
+            // 模拟分析
+            const wordCount = text.split(/\s+/).length;
+            const uniqueWords = new Set(text.toLowerCase().split(/\s+/)).size;
+            
+            document.getElementById('analysisResult').classList.remove('hidden');
+        }
+
+        function startReading() {
+            const text = document.getElementById('articleInput').value;
+            if (!text.trim()) {
+                alert('请先粘贴英文文章');
+                return;
+            }
+
+            // 将文本转换为可点击的单词
+            const words = text.split(/(\s+)/);
+            const htmlContent = words.map(word => {
+                if (/\s+/.test(word)) return word;
+                return `<span class="word cursor-pointer hover:bg-gray-200 px-1 rounded" onclick="toggleWord(this)">${word}</span>`;
+            }).join('');
+
+            document.getElementById('readingContent').innerHTML = htmlContent;
+            document.getElementById('readingSection').classList.remove('hidden');
+            
+            // 滚动到阅读区域
+            document.getElementById('readingSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function toggleWord(element) {
+            const word = element.textContent;
+            
+            if (clickedWords.has(word)) {
+                clickedWords.delete(word);
+                element.classList.remove('word-clicked');
+                element.classList.add('word-unknown');
+            } else {
+                clickedWords.add(word);
+                element.classList.add('word-clicked');
+                element.classList.remove('word-unknown');
+            }
+        }
+
+        function finishReading() {
+            if (clickedWords.size === 0) {
+                alert('您没有点击任何生词，阅读很棒！');
+                return;
+            }
+
+            // 添加到生词库
+            clickedWords.forEach(word => {
+                if (!vocabulary.find(v => v.word === word)) {
+                    vocabulary.push({
+                        word: word,
+                        meaning: '点击添加释义',
+                        addedTime: new Date().toLocaleString()
+                    });
+                }
+            });
+
+            // 显示报告
+            document.getElementById('newWordsCount').textContent = clickedWords.size;
+            document.getElementById('clickCount').textContent = clickedWords.size;
+            document.getElementById('reportSection').classList.remove('hidden');
+            
+            // 滚动到报告区域
+            document.getElementById('reportSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showVocabulary() {
+            if (vocabulary.length === 0) {
+                alert('暂无生词记录');
+                return;
+            }
+
+            const htmlContent = vocabulary.map((item, index) => `
+                <div class="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                    <div>
+                        <span class="font-semibold text-yellow-900">${item.word}</span>
+                        <input type="text" placeholder="添加释义" class="ml-3 px-2 py-1 border rounded text-sm" onchange="updateMeaning(${index}, this.value)">
+                    </div>
+                    <span class="text-xs text-gray-500">${item.addedTime}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('vocabularyList').innerHTML = htmlContent;
+            document.getElementById('vocabularySection').classList.remove('hidden');
+            
+            // 滚动到生词库区域
+            document.getElementById('vocabularySection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateMeaning(index, meaning) {
+            vocabulary[index].meaning = meaning;
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('EnglishReader 演示版已加载');
+        });
+    </script>
+</body>
+</html>

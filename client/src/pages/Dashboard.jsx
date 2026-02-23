@@ -49,7 +49,7 @@ function Dashboard() {
       {/* Welcome Hero — clean, no gradient */}
       <div className="py-2">
         <SplitText
-          text={standalone ? '欢迎使用 EnglishReader' : `你好，${data?.user?.username || ''}`}
+          text={standalone ? '欢迎使用 EnglishReader' : `您好，${data?.user?.username || ''}`}
           tag="h1"
           className="text-2xl font-bold text-surface-800 tracking-tight"
           splitType="words"
@@ -57,7 +57,7 @@ function Dashboard() {
           duration={0.5}
         />
         <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="text-[13px] text-surface-400">当前英语水平</span>
+          <span className="text-[13px] text-surface-400">您当前英语水平</span>
           <LevelBadge level={data?.user?.estimatedLevel || 'unknown'} />
           <span className="text-surface-200 mx-1">|</span>
           <span className="text-[13px] text-surface-400">期望目标</span>
@@ -88,7 +88,7 @@ function Dashboard() {
               <div className="flex-1 min-w-0">
                 <h3 className="text-[13px] font-semibold text-sky-800 mb-1">继续阅读</h3>
                 <p className="text-[12px] text-sky-600 mb-2.5">
-                  你有 {unfinished.length} 篇文章尚未读完
+                  您有 {unfinished.length} 篇文章尚未读完
                 </p>
                 <div className="space-y-1">
                   {unfinished.map(a => (

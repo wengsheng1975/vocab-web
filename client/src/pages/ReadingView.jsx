@@ -236,7 +236,7 @@ function ReadingView() {
       </div>
 
       {/* Article Content */}
-      <div className="bg-white rounded-xl border border-surface-200/80 p-6 sm:p-8 text-lg leading-[2.2] text-surface-700 min-h-[300px] select-none" onDragStart={e => e.preventDefault()}>
+      <div className="reading-content bg-white rounded-xl border border-surface-200/80 p-6 sm:p-8 text-lg leading-[2.2] text-surface-700 min-h-[300px] select-none" onDragStart={e => e.preventDefault()}>
         {tokens.map((token, i) => {
           if (token.type === 'word') {
             const cls = getWordClass(token.index, token.lower)
@@ -269,7 +269,7 @@ function ReadingView() {
             <button onClick={() => setSpellPopup(null)} className="text-surface-400 hover:text-surface-600 text-sm leading-none">&times;</button>
           </div>
           <p className="text-[12px] text-surface-500 mb-2">
-            "<span className="font-semibold text-red-500">{spellPopup.word}</span>" 不在词库中，你想说的是：
+            "<span className="font-semibold text-red-500">{spellPopup.word}</span>" 不在词库中，您想说的是：
           </p>
           <div className="flex flex-wrap gap-1.5">
             {spellPopup.suggestions.map(s => (
@@ -305,13 +305,13 @@ function ReadingView() {
         <ModalHeader onClose={() => setShowFinishPanel(false)}>完成阅读</ModalHeader>
         {totalMarked === 0 ? (
           <ModalBody className="text-center py-10">
-            <p className="text-surface-500 text-[13px] mb-5">你没有标记任何生词或词组，看来这篇文章对你来说很简单！</p>
+            <p className="text-surface-500 text-[13px] mb-5">您没有标记任何生词或词组，看来这篇文章对您来说很简单！</p>
             <Button onClick={submitFinish} disabled={finishing}>{finishing ? '提交中...' : '确认完成'}</Button>
           </ModalBody>
         ) : (
           <>
             <div className="px-5 py-2.5 text-[13px] text-surface-500 border-b border-surface-100 bg-surface-50/50">
-              你标记了 <span className="font-semibold text-red-500">{clickedWords.size}</span> 个生词、
+              您标记了 <span className="font-semibold text-red-500">{clickedWords.size}</span> 个生词、
               <span className="font-semibold text-emerald-500">{phrases.length}</span> 个词组。可以填写释义（选填）：
             </div>
             <ModalBody className="max-h-[50vh]">

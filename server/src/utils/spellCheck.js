@@ -2,14 +2,14 @@
  * 拼写检查与建议模块
  * 基于编辑距离（Levenshtein）在词库中查找拼写相近的单词
  */
-const { CET4_WORDS, CET6_ALL } = require('./cetWords');
+const { CET4_WORDS, CET6_ALL, IRREGULAR_FORMS } = require('./cetWords');
 const { getAllCommonWords } = require('./commonWords');
 
 // 合并所有已知单词（含常见派生形式）为拼写检查词库
 let ALL_KNOWN_WORDS = null;
 function getKnownWords() {
   if (!ALL_KNOWN_WORDS) {
-    const base = new Set([...getAllCommonWords(), ...CET6_ALL]);
+    const base = new Set([...getAllCommonWords(), ...CET6_ALL, ...IRREGULAR_FORMS]);
     ALL_KNOWN_WORDS = new Set(base);
 
     // 为每个基础词生成常见派生形式

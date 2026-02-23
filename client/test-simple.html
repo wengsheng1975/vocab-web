@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EnglishReader 简单测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .test-item {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+            color: #721c24;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 EnglishReader 基础测试</h1>
+        
+        <div id="results"></div>
+
+        <div style="text-align: center; margin: 20px 0;">
+            <button onclick="testBasic()">测试基础功能</button>
+            <button onclick="testBackend()">测试后端连接</button>
+            <button onclick="testVite()">测试 Vite</button>
+        </div>
+
+        <div class="test-item">
+            <h3>📋 测试说明</h3>
+            <p>这个页面用于测试 EnglishReader 的基础组件是否正常工作。</p>
+            <p><strong>如果这个页面能正常打开</strong>，说明 Node.js 和浏览器都正常。</p>
+            <p><strong>如果后端测试失败</strong>，说明后端服务未启动或配置有问题。</p>
+        </div>
+    </div>
+
+    <script>
+        function addResult(title, status, message = '') {
+            const resultsDiv = document.getElementById('results');
+            const result = document.createElement('div');
+            result.className = `test-item ${status}`;
+            result.innerHTML = `
+                <strong>${title}:</strong> ${status === 'success' ? '✅ 通过' : '❌ 失败'}
+                ${message ? '<br><small>' + message + '</small>' : ''}
+            `;
+            resultsDiv.appendChild(result);
+        }
+
+        function testBasic() {
+            document.getElementById('results').innerHTML = '';
+            
+            // 测试 JavaScript 基础功能
+            try {
+                const test = JSON.stringify({ test: 'hello' });
+                addResult('JavaScript 基础', 'success', 'JSON 序列化正常');
+            } catch (e) {
+                addResult('JavaScript 基础', 'error', e.message);
+            }
+
+            // 测试 Fetch API
+            try {
+                addResult('Fetch API', 'success', 'fetch 函数可用');
+            } catch (e) {
+                addResult('Fetch API', 'error', e.message);
+            }
+
+            // 测试 ES6 模块
+            try {
+                const arrow = () => 'test';
+                addResult('ES6 语法', 'success', '箭头函数正常');
+            } catch (e) {
+                addResult('ES6 语法', 'error', e.message);
+            }
+        }
+
+        async function testBackend() {
+            try {
+                const response = await fetch('http://localhost:3000/api/config');
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult('后端 API (3000)', 'success', JSON.stringify(data));
+                } else {
+                    addResult('后端 API (3000)', 'error', `HTTP ${response.status}`);
+                }
+            } catch (e) {
+                addResult('后端 API (3000)', 'error', e.message);
+            }
+
+            // 测试测试服务器
+            try {
+                const response = await fetch('http://localhost:3001/test');
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult('测试服务器 (3001)', 'success', JSON.stringify(data));
+                } else {
+                    addResult('测试服务器 (3001)', 'error', `HTTP ${response.status}`);
+                }
+            } catch (e) {
+                addResult('测试服务器 (3001)', 'error', e.message);
+            }
+        }
+
+        function testVite() {
+            // 检查是否在 Vite 开发环境中
+            if (window.location.port === '5173' || window.location.hostname === 'localhost') {
+                addResult('Vite 开发环境', 'success', `当前端口: ${window.location.port}`);
+            } else {
+                addResult('Vite 开发环境', 'error', `当前端口: ${window.location.port}，不是 5173`);
+            }
+        }
+
+        // 页面加载时自动运行基础测试
+        window.onload = function() {
+            testBasic();
+        };
+    </script>
+</body>
+</html>

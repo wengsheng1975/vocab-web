@@ -3,6 +3,8 @@
 /* 基础兜底：保证 JS 未执行或 Tailwind 未加载时页面仍有可见内容 */
 #root {
   min-height: 100vh;
+  width: 100%;
+  display: block;
 }
 
 /* ========================================
@@ -139,10 +141,12 @@
     @apply bg-primary-100/60;
   }
   .readable-word.word-clicked {
-    @apply text-red-600 font-semibold bg-red-50 border-b-2 border-red-500;
+    @apply text-red-600 bg-red-50;
+    box-shadow: inset 0 -2px 0 #ef4444;
   }
   .readable-word.word-phrase {
-    @apply text-emerald-600 font-semibold bg-emerald-50 border-b-2 border-emerald-500;
+    @apply text-emerald-600 bg-emerald-50;
+    box-shadow: inset 0 -2px 0 #10b981;
   }
   .readable-word.word-phrase:hover {
     @apply bg-emerald-100;
@@ -194,5 +198,11 @@
   /* ===== Unfinished reading reminder (Dashboard) ===== */
   .unfinished-reminder {
     @apply rounded-xl bg-sky-50/80 border border-sky-200/50 p-4;
+  }
+
+  /* 阅读正文：两端对齐 */
+  .reading-content {
+    text-align: justify;
+    text-justify: inter-word;
   }
 }

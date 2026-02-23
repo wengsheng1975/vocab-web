@@ -174,7 +174,7 @@ function Login() {
             <div className="mb-8">
               <h2 className="text-xl font-bold text-surface-800 mb-1">欢迎回来</h2>
               <p className="text-[13px] text-surface-400">
-                登录你的账号，继续学习之旅
+                登录您的账号，继续学习之旅
                 {userCount !== null && (
                   <span className="text-surface-300 ml-1">（已有 {userCount} 位用户加入）</span>
                 )}

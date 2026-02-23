@@ -51,6 +51,15 @@ export const authAPI = {
 // 文章 API
 export const articlesAPI = {
   import: (data) => api.post('/articles/import', data),
+  importFromUrl: (data) => api.post('/articles/import-url', data),
+  getCrawlerSources: () => api.get('/articles/crawl-sources'),
+  getCrawlPreview: (data) => api.post('/articles/crawl-preview', data),
+  importFromSource: (data) => api.post('/articles/crawl-source', data),
+  getFolders: () => api.get('/articles/folders'),
+  createFolder: (data) => api.post('/articles/folders', data),
+  renameFolder: (folderId, data) => api.put(`/articles/folders/${folderId}`, data),
+  deleteFolder: (folderId) => api.delete(`/articles/folders/${folderId}`),
+  moveToFolder: (articleId, folderId) => api.post(`/articles/${articleId}/move-folder`, { folderId }),
   getAll: () => api.get('/articles'),
   get: (id) => api.get(`/articles/${id}`),
   clickWord: (articleId, word, wordIndex) => api.post(`/articles/${articleId}/click-word`, { word, wordIndex }),

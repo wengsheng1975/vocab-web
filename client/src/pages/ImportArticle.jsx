@@ -14,9 +14,25 @@ function ImportArticle() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const [crawlError, setCrawlError] = useState('')
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
+
+  const [urlInput, setUrlInput] = useState('')
+  const [urlTitle, setUrlTitle] = useState('')
+  const [urlLoading, setUrlLoading] = useState(false)
+
+  const [crawlSources, setCrawlSources] = useState([])
+  const [crawlSourceKey, setCrawlSourceKey] = useState('chinadaily')
+  const [crawlLimit, setCrawlLimit] = useState(3)
+  const [crawlPreviewItems, setCrawlPreviewItems] = useState([])
+  const [crawlPreviewLoading, setCrawlPreviewLoading] = useState(false)
+  const [crawlImporting, setCrawlImporting] = useState(false)
+  const [crawlSummary, setCrawlSummary] = useState(null)
+  const [crawlRecommendation, setCrawlRecommendation] = useState(null)
+  const [singleImportingUrl, setSingleImportingUrl] = useState('')
+  const [singleImportStatus, setSingleImportStatus] = useState({})
 
   const [issues, setIssues] = useState([])
   const [checking, setChecking] = useState(false)
@@ -67,6 +83,22 @@ function ImportArticle() {
         setChecking(false)
       }
     }, 1500)
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    articlesAPI.getCrawlerSources()
+      .then(({ data }) => {
+        if (!mounted) return
+        const sources = data.sources || []
+        setCrawlSources(sources)
+        if (sources.length > 0) setCrawlSourceKey(sources[0].key)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setCrawlSources([])
+      })
+    return () => { mounted = false }
   }, [])
 
   useEffect(() => {
@@ -135,6 +167,83 @@ function ImportArticle() {
     finally { setLoading(false) }
   }
 
+  const handleImportFromUrl = async (e) => {
+    e.preventDefault()
+    setCrawlError('')
+    setCrawlSummary(null)
+    setUrlLoading(true)
+    try {
+      const payload = { url: urlInput.trim() }
+      if (urlTitle.trim()) payload.title = urlTitle.trim()
+      const { data } = await articlesAPI.importFromUrl(payload)
+      setResult(data)
+    } catch (err) {
+      setCrawlError(err.response?.data?.error || '链接导入失败')
+    } finally {
+      setUrlLoading(false)
+    }
+  }
+
+  const handlePreviewSource = async () => {
+    setCrawlError('')
+    setCrawlSummary(null)
+    setCrawlRecommendation(null)
+    setSingleImportStatus({})
+    setCrawlPreviewLoading(true)
+    try {
+      const { data } = await articlesAPI.getCrawlPreview({ source: crawlSourceKey, limit: crawlLimit })
+      setCrawlPreviewItems(data.items || [])
+      setCrawlRecommendation(data.recommendation || null)
+    } catch (err) {
+      setCrawlError(err.response?.data?.error || '抓取预览失败')
+      setCrawlPreviewItems([])
+      setCrawlRecommendation(null)
+    } finally {
+      setCrawlPreviewLoading(false)
+    }
+  }
+
+  const handleImportFromSource = async () => {
+    setCrawlError('')
+    setCrawlImporting(true)
+    try {
+      const { data } = await articlesAPI.importFromSource({ source: crawlSourceKey, limit: crawlLimit })
+      setCrawlSummary(data)
+      setCrawlRecommendation(data.recommendation || null)
+      const statusMap = {}
+      for (const item of data.imported || []) statusMap[item.url] = 'imported'
+      for (const item of data.skipped || []) if (item.reason === 'duplicate') statusMap[item.url] = 'duplicate'
+      setSingleImportStatus((prev) => ({ ...prev, ...statusMap }))
+    } catch (err) {
+      setCrawlError(err.response?.data?.error || '批量导入失败')
+    } finally {
+      setCrawlImporting(false)
+    }
+  }
+
+  const handleImportSinglePreviewItem = async (item) => {
+    const url = item?.url
+    if (!url) return
+
+    setCrawlError('')
+    setSingleImportingUrl(url)
+    try {
+      await articlesAPI.importFromUrl({
+        url,
+        title: item?.title || undefined,
+      })
+      setSingleImportStatus((prev) => ({ ...prev, [url]: 'imported' }))
+    } catch (err) {
+      if (err.response?.status === 409) {
+        setSingleImportStatus((prev) => ({ ...prev, [url]: 'duplicate' }))
+        return
+      }
+      setCrawlError(err.response?.data?.error || '单篇导入失败')
+    } finally {
+      setSingleImportingUrl('')
+    }
+  }
+
   const startReading = () => { if (result?.article?.id) navigate(`/read/${result.article.id}`) }
   const levelNames = { A1: 'A1 入门', A2: 'A2 基础', B1: 'B1 中级', B2: 'B2 中高级', C1: 'C1 高级', C2: 'C2 精通' }
 
@@ -175,12 +284,125 @@ function ImportArticle() {
       <PageHeader title="导入文章" />
       <AnimatedContent distance={20} duration={0.5}>
         {!result ? (
-          <Card padding="p-5 sm:p-7">
-            <p className="text-[13px] text-surface-500 leading-relaxed mb-5">
-              粘贴一篇英文文章，系统会自动检查语法并评估难度。阅读时可以点击不认识的单词加入生词库。
-            </p>
-            {error && <Alert type="error" className="mb-4">{error}</Alert>}
-            <form onSubmit={handleImport} className="space-y-4">
+          <div className="space-y-4">
+            <Card padding="p-5 sm:p-7">
+              <h3 className="text-[15px] font-semibold text-surface-800 mb-2">网站抓取导入（MVP）</h3>
+              <p className="text-[13px] text-surface-500 leading-relaxed mb-4">
+                支持从 China Daily 等白名单站点抓取文章。可选择「单链接导入」或「按来源批量抓取」。
+              </p>
+
+              {crawlError && <Alert type="error" className="mb-4">{crawlError}</Alert>}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <div className="p-3.5 bg-surface-50 rounded-lg border border-surface-200/70">
+                  <h4 className="text-[13px] font-medium text-surface-700 mb-2">单链接导入</h4>
+                  <form onSubmit={handleImportFromUrl} className="space-y-2.5">
+                    <input
+                      type="url"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder="粘贴文章链接（如 China Daily 文章页）"
+                      required
+                      className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15"
+                    />
+                    <input
+                      type="text"
+                      value={urlTitle}
+                      onChange={(e) => setUrlTitle(e.target.value)}
+                      placeholder="可选：自定义标题"
+                      className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15"
+                    />
+                    <Button type="submit" size="full" disabled={urlLoading || !urlInput.trim()}>
+                      {urlLoading ? '抓取并导入中...' : '抓取并导入'}
+                    </Button>
+                  </form>
+                </div>
+
+                <div className="p-3.5 bg-surface-50 rounded-lg border border-surface-200/70">
+                  <h4 className="text-[13px] font-medium text-surface-700 mb-2">按来源抓取</h4>
+                  <div className="space-y-2.5">
+                    <select
+                      value={crawlSourceKey}
+                      onChange={(e) => setCrawlSourceKey(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15"
+                    >
+                      {crawlSources.length === 0 && <option value="chinadaily">chinadaily</option>}
+                      {crawlSources.map((s) => (
+                        <option key={s.key} value={s.key}>{s.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={crawlLimit}
+                      onChange={(e) => setCrawlLimit(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                      className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15"
+                    />
+                    <div className="flex gap-2">
+                      <Button variant="secondary" size="full" type="button" onClick={handlePreviewSource} disabled={crawlPreviewLoading}>
+                        {crawlPreviewLoading ? '抓取中...' : '预览源文章'}
+                      </Button>
+                      <Button size="full" type="button" onClick={handleImportFromSource} disabled={crawlImporting}>
+                        {crawlImporting ? '导入中...' : '批量导入'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {crawlSummary && (
+                <div className="mb-4 p-3 bg-sky-50 border border-sky-200 rounded-lg text-[13px] text-sky-700">
+                  本次抓取：请求 {crawlSummary.summary?.requested || 0} 篇，成功导入 {crawlSummary.summary?.imported || 0} 篇，
+                  重复跳过 {crawlSummary.summary?.skipped || 0} 篇，失败 {crawlSummary.summary?.failed || 0} 篇。
+                </div>
+              )}
+
+              {crawlRecommendation && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] text-emerald-700 leading-relaxed">
+                  推荐策略：优先当日最新文章，并按您的水平（{crawlRecommendation.userLevel || 'unknown'}）
+                  选择“同级或稍高”难度。首次无历史水平时，会按目标级别随机推荐用于阶段评估。
+                </div>
+              )}
+
+              {crawlPreviewItems.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-[12px] font-medium text-surface-500">预览文章</h4>
+                  <div className="max-h-52 overflow-y-auto border border-surface-200 rounded-lg divide-y divide-surface-100 bg-white">
+                    {crawlPreviewItems.map((item, idx) => (
+                      <div key={`${item.url}-${idx}`} className="px-3 py-2.5 text-[13px] flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium text-surface-700 truncate">{item.title || '未命名文章'}</div>
+                          <div className="text-surface-400 text-[11px] truncate">{item.url}</div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant={singleImportStatus[item.url] ? 'secondary' : 'soft'}
+                          disabled={singleImportingUrl === item.url || singleImportStatus[item.url] === 'imported' || singleImportStatus[item.url] === 'duplicate'}
+                          onClick={() => handleImportSinglePreviewItem(item)}
+                        >
+                          {singleImportingUrl === item.url
+                            ? '导入中...'
+                            : singleImportStatus[item.url] === 'imported'
+                              ? '已导入'
+                              : singleImportStatus[item.url] === 'duplicate'
+                                ? '已存在'
+                                : '导入'}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            <Card padding="p-5 sm:p-7">
+              <p className="text-[13px] text-surface-500 leading-relaxed mb-5">
+                粘贴一篇英文文章，系统会自动检查语法并评估难度。阅读时可以点击不认识的单词加入生词库。
+              </p>
+              {error && <Alert type="error" className="mb-4">{error}</Alert>}
+              <form onSubmit={handleImport} className="space-y-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
                   <label className="text-[13px] font-medium text-surface-600">文章标题 <span className="text-red-500">*</span></label>
@@ -228,8 +450,9 @@ function ImportArticle() {
               <Button type="submit" size="full" disabled={loading || checking}>
                 {loading ? '正在分析...' : checking ? '正在检查语法...' : '导入并分析'}
               </Button>
-            </form>
-          </Card>
+              </form>
+            </Card>
+          </div>
         ) : (
           <div className="space-y-4">
             <Card padding="p-5 sm:p-7">

@@ -198,6 +198,11 @@ router.post('/:id/master', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const vocabId = req.params.id;
 
+  const word = db.prepare('SELECT id FROM vocabulary WHERE id = ? AND user_id = ?').get(vocabId, userId);
+  if (!word) {
+    return res.status(404).json({ error: '单词不存在' });
+  }
+
   db.prepare(
     "UPDATE vocabulary SET status = 'mastered' WHERE id = ? AND user_id = ?"
   ).run(vocabId, userId);
@@ -209,6 +214,11 @@ router.post('/:id/master', validateIdParam, (req, res) => {
 router.post('/:id/restore', validateIdParam, (req, res) => {
   const userId = req.user.id;
   const vocabId = req.params.id;
+
+  const word = db.prepare('SELECT id FROM vocabulary WHERE id = ? AND user_id = ?').get(vocabId, userId);
+  if (!word) {
+    return res.status(404).json({ error: '单词不存在' });
+  }
 
   db.prepare(
     "UPDATE vocabulary SET status = 'active', skip_count = 0 WHERE id = ? AND user_id = ?"

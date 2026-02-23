@@ -108,13 +108,13 @@ function ReadingReport() {
             <h3 className="font-semibold text-surface-800 text-[15px] mb-2.5">学习建议</h3>
             <div className="p-3.5 bg-sky-50/80 rounded-lg text-[13px] text-sky-700 leading-relaxed">
               {unknownPct < 5 ? (
-                <p>生词率很低 ({unknownPct}%)，这篇文章对你来说比较简单。可以尝试阅读更有挑战性的文章来提升水平。</p>
+                <p>生词率很低 ({unknownPct}%)，这篇文章对您来说比较简单。可以尝试阅读更有挑战性的文章来提升水平。</p>
               ) : unknownPct < 15 ? (
-                <p>生词率 {unknownPct}%，非常理想！这个难度最适合你学习，能在理解文章的同时有效积累新词汇。</p>
+                <p>生词率 {unknownPct}%，非常理想！这个难度最适合您学习，能在理解文章的同时有效积累新词汇。</p>
               ) : unknownPct < 30 ? (
                 <p>生词率 {unknownPct}%，略有挑战。建议多花时间复习这些生词，必要时可以选择稍简单的文章。</p>
               ) : (
-                <p>生词率较高 ({unknownPct}%)，这篇文章对你来说偏难。建议先巩固现有生词，选择更适合当前水平的文章。</p>
+                <p>生词率较高 ({unknownPct}%)，这篇文章对您来说偏难。建议先巩固现有生词，选择更适合当前水平的文章。</p>
               )}
             </div>
           </Card>
@@ -122,7 +122,7 @@ function ReadingReport() {
           {highFreq.length > 0 && (
             <Card className="!border-l-[3px] !border-l-amber-400">
               <h3 className="font-semibold text-surface-800 text-[15px] mb-1">高频生词警告</h3>
-              <p className="text-[12px] text-surface-400 mb-3">以下单词你在多篇文章中都不认识，请务必重点学习：</p>
+              <p className="text-[12px] text-surface-400 mb-3">以下单词您在多篇文章中都不认识，请务必重点学习：</p>
               <div className="space-y-1.5">
                 {highFreq.map((w, i) => (
                   <div key={i} className="flex items-center justify-between px-3 py-2 bg-amber-50/80 rounded-lg">

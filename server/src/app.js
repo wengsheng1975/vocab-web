@@ -31,7 +31,7 @@ app.disable('x-powered-by');
 // CORS: 限制允许的来源
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:5173', 'http://localhost:3000']; // 开发默认值
+  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000']; // 开发默认值
 
 app.use(cors({
   origin: (origin, callback) => {

@@ -864,6 +864,7 @@ const IRREGULAR_MAP = new Map([
   ['further',{lemma:'far',form:'比较级'}],['furthest',{lemma:'far',form:'最高级'}],['farther',{lemma:'far',form:'比较级'}],['farthest',{lemma:'far',form:'最高级'}],
   ['elder',{lemma:'old',form:'比较级'}],['eldest',{lemma:'old',form:'最高级'}],
 ]);
+const IRREGULAR_FORMS = new Set(IRREGULAR_MAP.keys());
 
 /**
  * 获取单词的词形分析信息（结合词库验证）
@@ -1160,6 +1161,7 @@ module.exports = {
   CET4_WORDS,
   CET6_EXTRA_WORDS,
   CET6_ALL,
+  IRREGULAR_FORMS,
   getWordCETLevel,
   getWordMorphInfo,
   isOutOfScope,

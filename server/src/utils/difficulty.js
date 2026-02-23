@@ -144,21 +144,21 @@ function isDifficultyAppropriate(articleDifficulty, userLevel) {
   const articleIdx = levelOrder.indexOf(articleDifficulty);
   const userIdx = levelOrder.indexOf(userLevel);
 
-  if (userIdx === -1) return { appropriate: true, message: '暂无足够数据评估你的水平，请继续阅读' };
+  if (userIdx === -1) return { appropriate: true, message: '暂无足够数据评估您的水平，请继续阅读' };
   if (articleIdx === -1) return { appropriate: true, message: '' };
 
   const diff = articleIdx - userIdx;
   if (diff <= 1 && diff >= -1) {
-    return { appropriate: true, message: '这篇文章难度适合你当前水平' };
+    return { appropriate: true, message: '这篇文章难度适合您当前水平' };
   } else if (diff > 1) {
     return {
       appropriate: false,
-      message: `这篇文章难度为 ${articleDifficulty}，高于你当前水平 ${userLevel}，建议选择更简单的文章`,
+      message: `这篇文章难度为 ${articleDifficulty}，高于您当前水平 ${userLevel}，建议选择更简单的文章`,
     };
   } else {
     return {
       appropriate: true,
-      message: `这篇文章难度为 ${articleDifficulty}，低于你当前水平 ${userLevel}，适合巩固`,
+      message: `这篇文章难度为 ${articleDifficulty}，低于您当前水平 ${userLevel}，适合巩固`,
     };
   }
 }

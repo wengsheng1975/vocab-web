@@ -82,7 +82,7 @@ function Register() {
 
           <div className="relative z-10 space-y-4">
             <SplitText
-              text="开始你的英语学习之旅"
+              text="开始您的英语学习之旅"
               tag="h1"
               className="text-[2.5rem] font-extrabold text-white leading-[1.15] tracking-tight"
               splitType="chars"
@@ -117,7 +117,7 @@ function Register() {
 
             <div className="mb-8">
               <h2 className="text-xl font-bold text-surface-800 mb-1">创建账号</h2>
-              <p className="text-[13px] text-surface-400">填写信息，开始你的学习旅程</p>
+              <p className="text-[13px] text-surface-400">填写信息，开始您的学习旅程</p>
             </div>
 
             {error && <Alert type="error" className="mb-4">{error}</Alert>}

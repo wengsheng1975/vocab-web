@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -21,11 +22,16 @@ function PrivateRoute({ children }) {
 
 function App() {
   const { user } = useAuth()
+  const location = useLocation()
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
+  const mainClassName = isAuthPage
+    ? 'flex-1 w-full'
+    : 'flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8'
 
   return (
     <div className="min-h-screen bg-surface-50 flex flex-col">
       {user && <Navbar />}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8">
+      <main className={mainClassName}>
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
           <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />

@@ -19,7 +19,7 @@ if (!fs.existsSync(dataDir)) {
 try {
   fs.chmodSync(dataDir, 0o700);
 } catch {
-  // Windows 等不支持 chmod 的系统忽略
+  // 在不支持 chmod 的系统上忽略
 }
 
 const dbPath = path.join(dataDir, 'vocab.db');
