@@ -9,11 +9,6 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 import SplitText from '../components/reactbits/SplitText'
 import AnimatedContent from '../components/reactbits/AnimatedContent'
 
-const levelNames = {
-  unknown: '未评估', A1: 'A1 入门', A2: 'A2 基础', B1: 'B1 中级',
-  B2: 'B2 中高级', C1: 'C1 高级', C2: 'C2 精通',
-}
-
 function Dashboard() {
   const { standalone } = useAuth()
   const [data, setData] = useState(null)
@@ -67,9 +62,15 @@ function Dashboard() {
           <select
             value={targetLevel}
             onChange={async (e) => {
-              const newLevel = e.target.value;
-              setTargetLevel(newLevel);
-              try { await authAPI.setTargetLevel(newLevel) } catch {}
+              const newLevel = e.target.value
+              const prevLevel = targetLevel
+              setTargetLevel(newLevel)
+              try {
+                await authAPI.setTargetLevel(newLevel)
+              } catch (err) {
+                console.error('设置目标等级失败:', err)
+                setTargetLevel(prevLevel)
+              }
             }}
             className="text-[12px] px-2 py-0.5 rounded-md border border-surface-200 bg-white text-surface-700 outline-none focus:border-primary-400 cursor-pointer"
           >

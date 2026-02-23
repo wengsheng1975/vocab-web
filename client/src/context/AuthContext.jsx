@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api, { authAPI } from '../api';
 
@@ -51,7 +52,7 @@ export function AuthProvider({ children }) {
         setStandalone(false);
         localStorage.removeItem('standalone');
       }
-    } catch (e) {
+    } catch {
       // 请求失败（后端未启动、超时等）不改变 standalone，保证下面 finally 会执行
     } finally {
       setLoading(false);

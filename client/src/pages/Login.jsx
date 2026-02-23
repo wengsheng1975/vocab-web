@@ -90,7 +90,7 @@ function Login() {
       const { data } = await authAPI.demo()
       login(data.user, data.token)
       navigate('/')
-    } catch (err) {
+    } catch {
       setError('测试登录失败，请稍后重试')
     } finally {
       setDemoLoading(false)

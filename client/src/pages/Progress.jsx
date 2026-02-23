@@ -9,10 +9,6 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 import AnimatedContent from '../components/reactbits/AnimatedContent'
 import CountUp from '../components/reactbits/CountUp'
 
-const levelNames = {
-  unknown: '未评估', A1: 'A1 入门', A2: 'A2 基础', B1: 'B1 中级',
-  B2: 'B2 中高级', C1: 'C1 高级', C2: 'C2 精通',
-}
 const levelOrder = { unknown: 0, A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 }
 
 function Progress() {

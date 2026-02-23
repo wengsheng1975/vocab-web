@@ -6,7 +6,10 @@ node_modules/
 
 # Build output
 client/dist/
-dist-windows/
+
+# Lock files (avoid cross-platform optional metadata reappearing)
+client/package-lock.json
+server/package-lock.json
 
 # Environment variables (may contain secrets)
 .env
@@ -29,7 +32,6 @@ npm-debug.log*
 
 # OS files
 .DS_Store
-Thumbs.db
 
 # Editor
 .vscode/

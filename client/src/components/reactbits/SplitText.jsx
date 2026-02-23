@@ -3,7 +3,7 @@ import gsap from 'gsap'
 
 export default function SplitText({
   text = '',
-  tag: Tag = 'p',
+  tag = 'p',
   className = '',
   delay = 50,
   duration = 0.8,
@@ -15,6 +15,7 @@ export default function SplitText({
   textAlign = 'left',
   onAnimationComplete,
 }) {
+  const Tag = tag
   const containerRef = useRef(null)
   const hasAnimated = useRef(false)
 

@@ -72,7 +72,9 @@ function ImportArticle() {
               const { data: recheck } = await articlesAPI.grammarCheck(fixedText)
               setIssues(recheck.issues || [])
               setCheckSource(recheck.source)
-            } catch (e) { /* ignore */ }
+            } catch (err) {
+              console.error('自动修正后的复检失败:', err)
+            }
           }, 500)
         } else {
           setAutoFixedCount(0)
@@ -152,8 +154,9 @@ function ImportArticle() {
           })
         }
         setTitleIssues(titleWarnings)
-      }
-      catch {} finally { setCheckingTitle(false) }
+      } catch (err) {
+        console.error('标题检查失败:', err)
+      } finally { setCheckingTitle(false) }
     }, 1500)
   }, [])
 
