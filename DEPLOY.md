@@ -26,6 +26,8 @@
 ./scripts/start-github-codespace.sh
 ```
 
+说明：若未手动设置 `JWT_SECRET`，启动脚本会自动生成当前会话临时密钥。
+
 ## 3. 打开公网网址
 
 1. 在 Codespaces 的 `Ports` 面板找到 `3000`
