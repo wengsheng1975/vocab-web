@@ -154,6 +154,10 @@
   .readable-word.word-drag-preview {
     @apply bg-primary-200/40 border-b-2 border-dashed border-primary-500 text-primary-700;
   }
+  .readable-word.word-speaking {
+    @apply bg-blue-200/80 text-blue-900;
+    box-shadow: inset 0 -2px 0 #3b82f6;
+  }
 
   /* Grammar error markers */
   .grammar-error {

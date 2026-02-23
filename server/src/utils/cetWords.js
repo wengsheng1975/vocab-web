@@ -5,9 +5,12 @@
  * CET-6: 约 5500 词 — 在 CET-4 基础上扩展约 1000 词
  *
  * 词库用于判断用户生词是否"超纲"：
+ *   - 目标 高考: 不在高考常见词范围（A1/A2/B1）中的词为超纲
  *   - 目标 CET-4: 不在 CET4 中的词为超纲
  *   - 目标 CET-6: 不在 CET4+CET6 中的词为超纲
  */
+const { getAllCommonWords } = require('./commonWords');
+const GAOKAO_WORDS = getAllCommonWords();
 
 // ===== CET-4 核心词汇 =====
 const CET4_WORDS = new Set([
@@ -1133,12 +1136,13 @@ function getWordCETLevel(word) {
 /**
  * 判断单词是否超出用户设定的目标等级（支持词形还原）
  * @param {string} word
- * @param {'cet4'|'cet6'|'none'} targetLevel
+ * @param {'gaokao'|'cet4'|'cet6'|'none'} targetLevel
  * @returns {boolean} true 表示超纲
  */
 function isOutOfScope(word, targetLevel) {
   if (!targetLevel || targetLevel === 'none') return false;
   const w = word.toLowerCase().trim();
+  if (targetLevel === 'gaokao') return !isWordInSet(w, GAOKAO_WORDS);
   if (targetLevel === 'cet4') return !isWordInSet(w, CET4_WORDS);
   if (targetLevel === 'cet6') return !isWordInSet(w, CET6_ALL);
   return false;
@@ -1147,7 +1151,7 @@ function isOutOfScope(word, targetLevel) {
 /**
  * 批量检查一组单词中的超纲词
  * @param {string[]} words
- * @param {'cet4'|'cet6'|'none'} targetLevel
+ * @param {'gaokao'|'cet4'|'cet6'|'none'} targetLevel
  * @returns {Set<string>} 超纲词集合
  */
 function getOutOfScopeWords(words, targetLevel) {

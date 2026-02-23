@@ -74,6 +74,7 @@ function Dashboard() {
             className="text-[12px] px-2 py-0.5 rounded-md border border-surface-200 bg-white text-surface-700 outline-none focus:border-primary-400 cursor-pointer"
           >
             <option value="none">未设定</option>
+            <option value="gaokao">高考</option>
             <option value="cet4">大学四级 (CET-4)</option>
             <option value="cet6">大学六级 (CET-6)</option>
           </select>

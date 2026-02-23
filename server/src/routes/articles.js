@@ -195,6 +195,9 @@ function resolveCrawlerRecommendedLevel(userId) {
   if (target === 'cet4') {
     return { level: randomPick(['A2', 'B1', 'B2']), source: 'target_level_random(cet4)' };
   }
+  if (target === 'gaokao') {
+    return { level: randomPick(['A2', 'B1']), source: 'target_level_random(gaokao)' };
+  }
   return { level: randomPick(['A2', 'B1']), source: 'target_level_random(none)' };
 }
 

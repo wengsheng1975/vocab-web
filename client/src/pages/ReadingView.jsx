@@ -13,12 +13,41 @@ function tokenize(text) {
   let index = 0
   while ((match = regex.exec(text)) !== null) {
     if (match[1]) {
-      tokens.push({ type: 'word', text: match[1], lower: match[1].toLowerCase(), index: index++ })
+      const start = match.index
+      tokens.push({
+        type: 'word',
+        text: match[1],
+        lower: match[1].toLowerCase(),
+        index: index++,
+        start,
+        end: start + match[1].length,
+      })
     } else {
       tokens.push({ type: 'other', text: match[2] })
     }
   }
   return tokens
+}
+
+function findWordIndexByChar(tokens, charIndex) {
+  if (!Array.isArray(tokens) || tokens.length === 0) return null
+  const safeChar = Math.max(0, Number.isFinite(charIndex) ? charIndex : 0)
+
+  for (const token of tokens) {
+    if (token.type !== 'word') continue
+    if (safeChar >= token.start && safeChar < token.end) return token.index
+  }
+
+  for (const token of tokens) {
+    if (token.type !== 'word') continue
+    if (token.start > safeChar) return token.index
+  }
+
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    if (tokens[i].type === 'word') return tokens[i].index
+  }
+
+  return null
 }
 
 function ReadingView() {
@@ -32,6 +61,10 @@ function ReadingView() {
   const [showFinishPanel, setShowFinishPanel] = useState(false)
   const [wordMeanings, setWordMeanings] = useState({})
   const [finishing, setFinishing] = useState(false)
+  const [voiceGender, setVoiceGender] = useState('female')
+  const [speechSpeed, setSpeechSpeed] = useState('medium')
+  const [speechStatus, setSpeechStatus] = useState('idle') // idle | speaking | paused
+  const [activeSpokenWordIndex, setActiveSpokenWordIndex] = useState(null)
 
   // 拼写建议弹窗
   const [spellPopup, setSpellPopup] = useState(null) // { word, wordIndex, suggestions, x, y }
@@ -40,11 +73,184 @@ function ReadingView() {
   const [dragEnd, setDragEnd] = useState(null)
   const mouseDownRef = useRef(false)
   const hasDraggedRef = useRef(false)
+  const speechUtteranceRef = useRef(null)
+  const speechTextRef = useRef('')
+  const speechCharIndexRef = useRef(0)
 
   const stateRef = useRef({})
   stateRef.current = { dragStart, dragEnd, clickedWords, phrases, tokens }
+  const speedOrder = ['slow', 'medium', 'fast']
+  const speedRateMap = { slow: 0.5, medium: 0.9, fast: 1.3 }
+  const speedLabelMap = { slow: '慢速', medium: '中速', fast: '快速' }
 
-  useEffect(() => { loadArticle() }, [id])
+  function stopSpeech(updateState = true, resetProgress = true) {
+    const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
+    speechUtteranceRef.current = null
+    if (synth) synth.cancel()
+    if (resetProgress) {
+      speechTextRef.current = ''
+      speechCharIndexRef.current = 0
+      setActiveSpokenWordIndex(null)
+    }
+    if (updateState) setSpeechStatus('idle')
+  }
+
+  function getEnglishVoices() {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return []
+    const voices = window.speechSynthesis.getVoices() || []
+    const english = voices.filter((v) => /^en[-_]/i.test(v.lang))
+    return english.length > 0 ? english : voices
+  }
+
+  function pickVoiceByGender(gender) {
+    const voices = getEnglishVoices()
+    if (!voices.length) return null
+
+    const femaleHints = ['female', 'woman', 'girl', 'zira', 'samantha', 'karen', 'susan', 'emma', 'olivia', 'aria']
+    const maleHints = ['male', 'man', 'boy', 'david', 'mark', 'daniel', 'alex', 'george', 'james', 'john']
+    const targetHints = gender === 'male' ? maleHints : femaleHints
+    const fallbackHints = gender === 'male' ? femaleHints : maleHints
+
+    const withScore = voices.map((v) => {
+      const text = `${v.name} ${v.voiceURI}`.toLowerCase()
+      const preferredScore = targetHints.some((h) => text.includes(h)) ? 2 : 0
+      const fallbackScore = fallbackHints.some((h) => text.includes(h)) ? -1 : 0
+      const localeScore = /^en[-_](US|GB)$/i.test(v.lang) ? 1 : 0
+      return { voice: v, score: preferredScore + localeScore + fallbackScore }
+    })
+
+    withScore.sort((a, b) => b.score - a.score)
+    return withScore[0]?.voice || voices[0]
+  }
+
+  function buildUtterance(text, gender, speed, startIndex, fullLength) {
+    const utterance = new window.SpeechSynthesisUtterance(text)
+    utterance.lang = 'en-US'
+    utterance.rate = speedRateMap[speed] || 0.95
+    utterance.pitch = 1
+
+    const voice = pickVoiceByGender(gender)
+    if (voice) utterance.voice = voice
+
+    utterance.onboundary = (event) => {
+      if (speechUtteranceRef.current !== utterance) return
+      if (typeof event.charIndex === 'number' && event.charIndex >= 0) {
+        const absoluteChar = Math.min(fullLength, startIndex + event.charIndex)
+        speechCharIndexRef.current = absoluteChar
+        const wordIdx = findWordIndexByChar(stateRef.current.tokens, absoluteChar)
+        setActiveSpokenWordIndex(wordIdx)
+      }
+    }
+    utterance.onpause = (event) => {
+      if (speechUtteranceRef.current !== utterance) return
+      if (typeof event.charIndex === 'number' && event.charIndex >= 0) {
+        speechCharIndexRef.current = Math.min(fullLength, startIndex + event.charIndex)
+      }
+    }
+    utterance.onend = () => {
+      if (speechUtteranceRef.current === utterance) {
+        speechUtteranceRef.current = null
+        speechCharIndexRef.current = fullLength
+        setSpeechStatus('idle')
+        setActiveSpokenWordIndex(null)
+      }
+    }
+    utterance.onerror = () => {
+      if (speechUtteranceRef.current === utterance) {
+        speechUtteranceRef.current = null
+        setSpeechStatus('idle')
+        setActiveSpokenWordIndex(null)
+      }
+    }
+
+    return utterance
+  }
+
+  function startSpeechWithConfig(gender, speed, { fromCurrent = false } = {}) {
+    if (typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
+      alert('当前浏览器不支持系统朗读，请使用最新版 Chrome/Edge。')
+      return
+    }
+    const fullText = String(article?.content || '')
+    if (!fullText.trim()) {
+      alert('文章内容为空，无法朗读。')
+      return
+    }
+
+    if (speechTextRef.current !== fullText) {
+      speechTextRef.current = fullText
+      speechCharIndexRef.current = 0
+    }
+
+    let startIndex = fromCurrent ? speechCharIndexRef.current : 0
+    if (!Number.isFinite(startIndex) || startIndex < 0) startIndex = 0
+    if (startIndex >= fullText.length) startIndex = 0
+
+    let textToSpeak = fullText.slice(startIndex)
+    if (!textToSpeak.trim()) {
+      startIndex = 0
+      textToSpeak = fullText
+    }
+
+    stopSpeech(false, false)
+    const utterance = buildUtterance(textToSpeak, gender, speed, startIndex, fullText.length)
+    setActiveSpokenWordIndex(findWordIndexByChar(stateRef.current.tokens, startIndex))
+    speechUtteranceRef.current = utterance
+    setSpeechStatus('speaking')
+    window.speechSynthesis.speak(utterance)
+  }
+
+  function handleSpeechToggle() {
+    if (typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
+      alert('当前浏览器不支持系统朗读，请使用最新版 Chrome/Edge。')
+      return
+    }
+    if (speechStatus === 'speaking') {
+      window.speechSynthesis.pause()
+      setSpeechStatus('paused')
+      return
+    }
+    if (speechStatus === 'paused') {
+      window.speechSynthesis.resume()
+      setSpeechStatus('speaking')
+      return
+    }
+    startSpeechWithConfig(voiceGender, speechSpeed, { fromCurrent: true })
+  }
+
+  function handleVoiceGenderToggle() {
+    const nextGender = voiceGender === 'female' ? 'male' : 'female'
+    setVoiceGender(nextGender)
+    if (speechStatus !== 'idle') {
+      startSpeechWithConfig(nextGender, speechSpeed, { fromCurrent: true })
+    }
+  }
+
+  function handleSpeedToggle() {
+    const currentIndex = speedOrder.indexOf(speechSpeed)
+    const nextSpeed = speedOrder[(currentIndex + 1) % speedOrder.length]
+    setSpeechSpeed(nextSpeed)
+    if (speechStatus !== 'idle') {
+      startSpeechWithConfig(voiceGender, nextSpeed, { fromCurrent: true })
+    }
+  }
+
+  useEffect(() => {
+    stopSpeech(true, true)
+    loadArticle()
+  }, [id])
+
+  useEffect(() => {
+    const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
+    if (!synth) return undefined
+    const noop = () => {}
+    // 触发浏览器加载可用语音列表（部分浏览器需要监听后才可获取）
+    synth.onvoiceschanged = noop
+    return () => {
+      synth.onvoiceschanged = null
+      stopSpeech(false, true)
+    }
+  }, [])
 
   const loadArticle = async () => {
     try {
@@ -161,10 +367,12 @@ function ReadingView() {
   }
 
   const getWordClass = (tokenIndex, tokenLower) => {
-    if (phraseIndexMap.has(tokenIndex)) return 'word-phrase'
-    if (dragRange.has(tokenIndex)) return 'word-drag-preview'
-    if (clickedWords.has(tokenLower)) return 'word-clicked'
-    return ''
+    const classNames = []
+    if (phraseIndexMap.has(tokenIndex)) classNames.push('word-phrase')
+    if (dragRange.has(tokenIndex)) classNames.push('word-drag-preview')
+    if (clickedWords.has(tokenLower)) classNames.push('word-clicked')
+    if (activeSpokenWordIndex === tokenIndex) classNames.push('word-speaking')
+    return classNames.join(' ')
   }
 
   const handleFinishReading = () => {
@@ -218,6 +426,17 @@ function ReadingView() {
           <DiffBadge level={article.difficulty_level} />
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Button variant={speechStatus === 'speaking' ? 'danger' : 'secondary'} size="sm" onClick={handleSpeechToggle}>
+              {speechStatus === 'speaking' ? '暂停朗读' : speechStatus === 'paused' ? '继续朗读' : '开始朗读'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleVoiceGenderToggle}>
+              {voiceGender === 'female' ? '女声' : '男声'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleSpeedToggle}>
+              {speedLabelMap[speechSpeed]}
+            </Button>
+          </div>
           <span className="text-[13px] text-surface-500">
             已标记 <span className="font-semibold text-red-500">{clickedWords.size}</span> 词
             {phrases.length > 0 && <>, <span className="font-semibold text-emerald-500">{phrases.length}</span> 词组</>}

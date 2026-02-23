@@ -190,9 +190,9 @@ router.get('/target-level', authenticateToken, (req, res) => {
 
 router.put('/target-level', authenticateToken, (req, res) => {
   const { targetLevel } = req.body;
-  const valid = ['none', 'cet4', 'cet6'];
+  const valid = ['none', 'gaokao', 'cet4', 'cet6'];
   if (!valid.includes(targetLevel)) {
-    return res.status(400).json({ error: '无效的目标等级，可选值: none, cet4, cet6' });
+    return res.status(400).json({ error: '无效的目标等级，可选值: none, gaokao, cet4, cet6' });
   }
   db.prepare('UPDATE users SET target_level = ? WHERE id = ?').run(targetLevel, req.user.id);
   res.json({ message: '目标等级已更新', targetLevel });
