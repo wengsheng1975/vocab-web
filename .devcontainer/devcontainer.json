@@ -1,0 +1,12 @@
+{
+  "name": "vocab-web",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "postCreateCommand": "cd /workspaces/${localWorkspaceFolderBasename}/client && npm ci && cd /workspaces/${localWorkspaceFolderBasename}/server && npm ci",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
