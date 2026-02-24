@@ -8,6 +8,9 @@ import Card from '../components/ui/Card'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import SplitText from '../components/reactbits/SplitText'
 import AnimatedContent from '../components/reactbits/AnimatedContent'
+import Aurora from '../components/reactbits/Aurora'
+import ShinyText from '../components/reactbits/ShinyText'
+import CountUp from '../components/reactbits/CountUp'
 
 function Dashboard() {
   const { standalone } = useAuth()
@@ -43,44 +46,79 @@ function Dashboard() {
   if (loading) return <LoadingSpinner />
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Welcome Hero — clean, no gradient */}
-      <div className="py-2">
-        <SplitText
-          text={standalone ? '欢迎使用 EnglishReader' : `您好，${data?.user?.username || ''}`}
-          tag="h1"
-          className="text-2xl font-bold text-surface-800 tracking-tight"
-          splitType="words"
-          delay={60}
-          duration={0.5}
-        />
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="text-[13px] text-surface-400">您当前英语水平</span>
-          <LevelBadge level={data?.user?.estimatedLevel || 'unknown'} />
-          <span className="text-surface-200 mx-1">|</span>
-          <span className="text-[13px] text-surface-400">期望目标</span>
-          <select
-            value={targetLevel}
-            onChange={async (e) => {
-              const newLevel = e.target.value
-              const prevLevel = targetLevel
-              setTargetLevel(newLevel)
-              try {
-                await authAPI.setTargetLevel(newLevel)
-              } catch (err) {
-                console.error('设置目标等级失败:', err)
-                setTargetLevel(prevLevel)
-              }
-            }}
-            className="text-[12px] px-2 py-0.5 rounded-md border border-surface-200 bg-white text-surface-700 outline-none focus:border-primary-400 cursor-pointer"
-          >
-            <option value="none">未设定</option>
-            <option value="gaokao">高考</option>
-            <option value="cet4">大学四级 (CET-4)</option>
-            <option value="cet6">大学六级 (CET-6)</option>
-          </select>
+    <div className="space-y-8">
+      <AnimatedContent distance={22} duration={0.55}>
+        <section className="hero-panel relative overflow-hidden rounded-[1.75rem] border border-primary-300/40 px-5 py-6 sm:px-8 sm:py-9">
+          <Aurora
+            colorStops={['#158271', '#43b9a8', '#f97316', '#124f47']}
+            speed={10}
+            blur={90}
+            opacity={0.38}
+            size={66}
+          />
+
+          <div className="relative z-10 grid gap-6 lg:grid-cols-[1.618fr_1fr] items-end">
+            <div>
+              <span className="inline-flex items-center rounded-full bg-white/18 border border-white/30 px-3 py-1 text-[11px] font-semibold tracking-[0.08em] uppercase text-white/90 mb-3">
+                智能阅读驾驶舱
+              </span>
+              <SplitText
+                text={standalone ? '欢迎使用 EnglishReader' : `您好，${data?.user?.username || ''}`}
+                tag="h1"
+                className="text-white text-[clamp(1.68rem,1.2rem+1.65vw,2.7rem)] font-extrabold tracking-tight leading-[1.16]"
+                splitType="words"
+                delay={55}
+                duration={0.5}
+              />
+              <p className="mt-3 text-white/88 text-[14px] sm:text-[15px] max-w-2xl">
+                <ShinyText speed={4} className="text-white/90">
+                  以文章阅读为主线，持续追踪词汇掌握与难度成长，让每次阅读都看得见进步。
+                </ShinyText>
+              </p>
+              <div className="mt-4 flex items-center gap-2.5 flex-wrap text-white/90">
+                <span className="text-[13px]">您当前英语水平</span>
+                <LevelBadge level={data?.user?.estimatedLevel || 'unknown'} />
+                <span className="text-white/60">|</span>
+                <span className="text-[13px]">目标等级</span>
+                <select
+                  value={targetLevel}
+                  onChange={async (e) => {
+                    const newLevel = e.target.value
+                    const prevLevel = targetLevel
+                    setTargetLevel(newLevel)
+                    try {
+                      await authAPI.setTargetLevel(newLevel)
+                    } catch (err) {
+                      console.error('设置目标等级失败:', err)
+                      setTargetLevel(prevLevel)
+                    }
+                  }}
+                  className="text-[12px] px-2.5 py-1 rounded-lg border border-white/40 bg-white/15 text-white outline-none focus:border-white/60 cursor-pointer"
+                >
+                  <option value="none" className="text-surface-800">未设定</option>
+                  <option value="gaokao" className="text-surface-800">高考</option>
+                  <option value="cet4" className="text-surface-800">大学四级 (CET-4)</option>
+                  <option value="cet6" className="text-surface-800">大学六级 (CET-6)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+              <MetricBox label="活跃生词" value={data?.vocab?.active || 0} />
+              <MetricBox label="高频词" value={data?.vocab?.highFreq || 0} />
+              <MetricBox label="已读文章" value={data?.articles?.completed || 0} />
+              <MetricBox label="复习提醒" value={reviewSuggestions.length} />
+            </div>
+          </div>
+        </section>
+      </AnimatedContent>
+
+      <AnimatedContent distance={18} duration={0.45}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h2 className="text-[1.28rem] font-bold text-surface-800 tracking-tight">学习任务面板</h2>
+          <div className="toc-chip">今日目录</div>
         </div>
-      </div>
+      </AnimatedContent>
 
       {/* Unfinished Reading Reminder */}
       {unfinished.length > 0 && (
@@ -103,7 +141,7 @@ function Dashboard() {
                       className="flex items-center justify-between px-3 py-2 bg-white/60 rounded-lg text-[13px] hover:bg-white transition-colors group"
                     >
                       <span className="text-surface-700 group-hover:text-primary-600 transition-colors truncate mr-3">{a.title}</span>
-                      <span className="text-sky-600 text-[12px] font-medium whitespace-nowrap">
+                      <span className="text-sky-600 text-[12px] font-medium text-right">
                         已读 {a.scroll_percentage}%
                       </span>
                     </Link>
@@ -136,7 +174,7 @@ function Dashboard() {
                       className="flex items-center justify-between px-3 py-2 bg-white/60 rounded-lg text-[13px] hover:bg-white transition-colors group"
                     >
                       <span className="text-surface-700 group-hover:text-primary-600 transition-colors truncate mr-3">{s.title}</span>
-                      <span className="text-amber-600 text-[12px] font-medium whitespace-nowrap">{s.stillActiveCount} 个</span>
+                      <span className="text-amber-600 text-[12px] font-medium text-right">{s.stillActiveCount} 个</span>
                     </Link>
                   ))}
                 </div>
@@ -231,6 +269,20 @@ function Dashboard() {
 }
 
 /* ========== Small SVG icons (replacing HTML entities) ========== */
+function MetricBox({ label, value }) {
+  return (
+    <div className="rounded-xl border border-white/22 bg-white/14 px-3 py-3">
+      <div className="text-[11px] text-white/75 mb-0.5">{label}</div>
+      <CountUp
+        to={Number(value) || 0}
+        duration={1.2}
+        separator=","
+        className="text-[1.15rem] font-bold text-white tracking-tight"
+      />
+    </div>
+  )
+}
+
 function WordIcon() {
   return <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
 }

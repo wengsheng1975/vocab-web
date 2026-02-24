@@ -124,7 +124,8 @@ function Vocabulary() {
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader title="生词本">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="toc-chip">词汇目录</span>
           <StatusBadge text={`活跃 ${stats.activeCount || 0}`} color="primary" />
           <StatusBadge text={`高频 ${stats.highFreqCount || 0}`} color="danger" />
           <StatusBadge text={`已掌握 ${stats.masteredCount || 0}`} color="success" />
@@ -136,32 +137,34 @@ function Vocabulary() {
 
       {/* Controls */}
       <AnimatedContent distance={15} duration={0.4}>
-        <div className="flex flex-col sm:flex-row gap-2.5 mb-5">
-          <div className="flex-1 relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input type="text" placeholder="搜索单词..." value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all" />
-          </div>
-          <div className="flex gap-2">
-            <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }}
-              className="px-3 py-2.5 bg-white border border-surface-200 rounded-lg text-[13px] text-surface-700 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all">
-              <option value="active">活跃生词</option>
-              <option value="mastered">已掌握</option>
-              <option value="all">全部</option>
-            </select>
-            <select value={sort} onChange={(e) => setSort(e.target.value)}
-              className="px-3 py-2.5 bg-white border border-surface-200 rounded-lg text-[13px] text-surface-700 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all">
-              <option value="click_count">按词频</option>
-              <option value="last_clicked_at">按最近标记</option>
-              <option value="first_seen_at">按首次出现</option>
-              <option value="word">按字母</option>
-            </select>
-            <button className="px-3 py-2.5 bg-white border border-surface-200 rounded-lg text-[13px] text-surface-600 hover:bg-surface-50 transition-all"
-              onClick={() => setOrder(order === 'ASC' ? 'DESC' : 'ASC')}>
-              {order === 'ASC' ? '↑ 升序' : '↓ 降序'}
-            </button>
+        <div className="bg-white/92 border border-surface-200/85 rounded-2xl p-3.5 mb-5 shadow-[0_8px_24px_rgba(23,34,32,0.05)]">
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="flex-1 relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input type="text" placeholder="搜索单词..." value={search} onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all" />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }}
+                className="px-3 py-2.5 bg-white border border-surface-200 rounded-xl text-[13px] text-surface-700 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all">
+                <option value="active">活跃生词</option>
+                <option value="mastered">已掌握</option>
+                <option value="all">全部</option>
+              </select>
+              <select value={sort} onChange={(e) => setSort(e.target.value)}
+                className="px-3 py-2.5 bg-white border border-surface-200 rounded-xl text-[13px] text-surface-700 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all">
+                <option value="click_count">按词频</option>
+                <option value="last_clicked_at">按最近标记</option>
+                <option value="first_seen_at">按首次出现</option>
+                <option value="word">按字母</option>
+              </select>
+              <button className="px-3 py-2.5 bg-white border border-surface-200 rounded-xl text-[13px] text-surface-600 hover:bg-surface-50 transition-all"
+                onClick={() => setOrder(order === 'ASC' ? 'DESC' : 'ASC')}>
+                {order === 'ASC' ? '↑ 升序' : '↓ 降序'}
+              </button>
+            </div>
           </div>
         </div>
       </AnimatedContent>
@@ -180,7 +183,7 @@ function Vocabulary() {
             {words.map(word => {
               const isExpanded = expandedId === word.id
               return (
-                <div key={word.id} className={`bg-white rounded-xl border border-surface-200/80 overflow-hidden transition-shadow duration-200 hover:shadow-sm ${word.status === 'mastered' ? 'opacity-60' : ''}`}>
+                <div key={word.id} className={`bg-white/92 rounded-2xl border border-surface-200/85 overflow-hidden transition-all duration-200 hover:shadow-[0_12px_24px_rgba(17,63,57,0.1)] ${word.status === 'mastered' ? 'opacity-60' : ''}`}>
                   <div className="flex items-center justify-between px-4 py-3 cursor-pointer gap-3" onClick={() => setExpandedId(isExpanded ? null : word.id)}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2 flex-wrap">

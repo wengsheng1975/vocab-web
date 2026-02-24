@@ -6,8 +6,12 @@ const {
 } = require('./sources');
 const { assessDifficulty } = require('../../utils/difficulty');
 
-const FETCH_TIMEOUT_MS = 12000;
-const CRAWLER_UA = 'EnglishReaderCrawler/1.0 (+http://localhost)';
+const FETCH_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.CRAWLER_FETCH_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) return 12000;
+  return Math.min(60000, Math.max(3000, Math.trunc(raw)));
+})();
+const CRAWLER_UA = process.env.CRAWLER_USER_AGENT || 'EnglishReaderCrawler/1.0';
 const ALLOW_INSECURE_TLS = process.env.CRAWLER_INSECURE_TLS === 'true';
 
 if (ALLOW_INSECURE_TLS) {

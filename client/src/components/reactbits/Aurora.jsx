@@ -1,6 +1,6 @@
 export default function Aurora({
   className = '',
-  colorStops = ['#6366f1', '#06b6d4', '#8b5cf6', '#0ea5e9'],
+  colorStops = ['#158271', '#43b9a8', '#f97316', '#124f47'],
   speed = 6,
   blur = 80,
   opacity = 0.4,

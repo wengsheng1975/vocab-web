@@ -7,9 +7,9 @@ export default function Card({
 }) {
   return (
     <div
-      className={`bg-white rounded-xl border border-surface-200/80 ${padding} ${
+      className={`bg-white/92 rounded-2xl border border-surface-200/85 shadow-[0_8px_24px_rgba(23,34,32,0.05)] ${padding} ${
         hover
-          ? 'transition-shadow duration-300 hover:shadow-md'
+          ? 'transition-all duration-300 hover:shadow-[0_16px_34px_rgba(17,63,57,0.14)] hover:-translate-y-0.5'
           : ''
       } ${className}`}
       {...props}

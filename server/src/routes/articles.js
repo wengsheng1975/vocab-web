@@ -12,6 +12,34 @@ const { listSources: listCrawlerSources, fetchFeedPreview, fetchArticleByUrl } =
 const router = express.Router();
 router.use(authenticateToken);
 
+const MAX_ARTICLE_CONTENT_LENGTH = 1000000;
+const MAX_TRANSLATE_SNIPPETS = 12;
+const MAX_TRANSLATE_SNIPPET_LENGTH = 2400;
+const OUTBOUND_USER_AGENT = process.env.OUTBOUND_USER_AGENT || 'EnglishReader/1.0';
+const TRANSLATE_TARGET_LANG = process.env.TRANSLATE_TARGET_LANG || 'zh-CN';
+const TRANSLATE_API_ENDPOINT = (() => {
+  const fallback = 'https://translate.googleapis.com/translate_a/single';
+  try {
+    const base = process.env.TRANSLATE_API_BASE || 'https://translate.googleapis.com';
+    const path = process.env.TRANSLATE_API_PATH || '/translate_a/single';
+    return new URL(path, base).toString();
+  } catch {
+    return fallback;
+  }
+})();
+const TRANSLATE_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.TRANSLATE_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) return 10000;
+  return Math.min(30000, Math.max(3000, Math.trunc(raw)));
+})();
+const LANGUAGE_TOOL_URL = process.env.LANGUAGETOOL_API_URL || 'https://api.languagetool.org/v2/check';
+const LANGUAGE_TOOL_LANGUAGE = process.env.LANGUAGETOOL_LANGUAGE || 'en-US';
+const GRAMMAR_CHECK_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.GRAMMAR_CHECK_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) return 8000;
+  return Math.min(30000, Math.max(3000, Math.trunc(raw)));
+})();
+
 // MIME 类型白名单（扩展名 + MIME 双重校验）
 const ALLOWED_FILE_TYPES = {
   '.txt': ['text/plain'],
@@ -169,6 +197,131 @@ function normalizeImportedText(text) {
     .trim();
 }
 
+function extractIndexedWords(text) {
+  const words = [];
+  const regex = /([a-zA-Z]+)/g;
+  let match;
+  let idx = 0;
+  while ((match = regex.exec(String(text || ''))) !== null) {
+    words.push({ index: idx, word: match[1].toLowerCase() });
+    idx += 1;
+  }
+  return words;
+}
+
+function parsePreferredStart(rawIndex) {
+  if (typeof rawIndex === 'number' && Number.isInteger(rawIndex) && rawIndex >= 0) {
+    return rawIndex;
+  }
+  if (typeof rawIndex === 'string' && rawIndex.trim()) {
+    const first = rawIndex.split(',')[0];
+    const num = Number(first);
+    if (Number.isInteger(num) && num >= 0) return num;
+  }
+  return null;
+}
+
+function pickNearest(candidates, preferred) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
+  if (!Number.isInteger(preferred) || preferred < 0) return candidates[0];
+  let best = candidates[0];
+  let bestDist = Math.abs(best - preferred);
+  for (let i = 1; i < candidates.length; i += 1) {
+    const cand = candidates[i];
+    const dist = Math.abs(cand - preferred);
+    if (dist < bestDist) {
+      best = cand;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function findPhraseStartCandidates(wordRows, phraseWords) {
+  const starts = [];
+  if (!Array.isArray(phraseWords) || phraseWords.length < 2) return starts;
+  const len = phraseWords.length;
+  for (let i = 0; i <= wordRows.length - len; i += 1) {
+    let ok = true;
+    for (let j = 0; j < len; j += 1) {
+      if (wordRows[i + j].word !== phraseWords[j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) starts.push(i);
+  }
+  return starts;
+}
+
+function splitTextForTranslation(text, maxLen = 1200) {
+  const source = String(text || '').trim();
+  if (!source) return [];
+
+  const chunks = [];
+  let start = 0;
+  while (start < source.length) {
+    let end = Math.min(start + maxLen, source.length);
+    if (end < source.length) {
+      const window = source.slice(start, end);
+      const nearestBreak = Math.max(
+        window.lastIndexOf('\n'),
+        window.lastIndexOf('. '),
+        window.lastIndexOf('! '),
+        window.lastIndexOf('? '),
+        window.lastIndexOf('。'),
+        window.lastIndexOf('！'),
+        window.lastIndexOf('？')
+      );
+      if (nearestBreak > maxLen * 0.5) {
+        end = start + nearestBreak + 1;
+      }
+    }
+    chunks.push(source.slice(start, end));
+    start = end;
+  }
+  return chunks.filter((c) => c.trim().length > 0);
+}
+
+async function translateChunkToChinese(chunkText) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS);
+  const params = new URLSearchParams({
+    client: 'gtx',
+    sl: 'auto',
+    tl: TRANSLATE_TARGET_LANG,
+    dt: 't',
+    q: chunkText,
+  });
+  const url = `${TRANSLATE_API_ENDPOINT}?${params.toString()}`;
+  try {
+    const resp = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { 'User-Agent': OUTBOUND_USER_AGENT },
+    });
+    if (!resp.ok) throw new Error(`translate failed with status ${resp.status}`);
+    const json = await resp.json();
+    if (!Array.isArray(json) || !Array.isArray(json[0])) return chunkText;
+    const translated = json[0]
+      .map((item) => (Array.isArray(item) ? String(item[0] || '') : ''))
+      .join('');
+    return translated || chunkText;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function translateTextToChinese(text) {
+  const chunks = splitTextForTranslation(text, 1200);
+  const translated = [];
+  for (const chunk of chunks) {
+    const zh = await translateChunkToChinese(chunk);
+    translated.push(zh);
+  }
+  return translated.join('\n');
+}
+
 function randomPick(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
   return arr[Math.floor(Math.random() * arr.length)];
@@ -208,6 +361,12 @@ function parseOptionalFolderId(rawValue) {
     throw badRequest('folderId 必须是正整数或 null');
   }
   return num;
+}
+
+function clampNumber(rawValue, min, max, fallback = 0) {
+  const num = Number(rawValue);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
 }
 
 function normalizeFolderName(rawName) {
@@ -250,8 +409,8 @@ function importArticleForUser({
   if (safeTitle.length > 200) {
     throw badRequest('标题长度应在 1-200 字符之间');
   }
-  if (safeContent.length > 500000) {
-    throw badRequest('文章内容不能为空，且不超过 50 万字符');
+  if (safeContent.length > MAX_ARTICLE_CONTENT_LENGTH) {
+    throw badRequest('文章内容不能为空，且不超过 100 万字符');
   }
 
   let safePublishedAt = null;
@@ -326,14 +485,17 @@ router.post('/grammar-check', async (req, res) => {
   // 先尝试 LanguageTool API
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), GRAMMAR_CHECK_TIMEOUT_MS);
 
-    const response = await fetch('https://api.languagetool.org/v2/check', {
+    const response = await fetch(LANGUAGE_TOOL_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': OUTBOUND_USER_AGENT,
+      },
       body: new URLSearchParams({
         text: text,
-        language: 'en-US',
+        language: LANGUAGE_TOOL_LANGUAGE,
         enabledOnly: 'false',
       }),
       signal: controller.signal,
@@ -819,6 +981,183 @@ router.get('/:id', validateIdParam, (req, res) => {
   res.json({ article, clickedWords, clickedPhrases, masteredWords, masteredPhrases });
 });
 
+// 临时翻译（不落库）：阅读页切换中文时使用
+router.post('/:id/translate', validateIdParam, async (req, res) => {
+  const userId = req.user.id;
+  const articleId = req.params.id;
+
+  const article = db.prepare(
+    'SELECT id, title, content FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  const sourceText = String(article.content || '').trim();
+  const sourceTitle = String(article.title || '').trim();
+  const titleOnly = req.body?.titleOnly === true;
+
+  if (!titleOnly && !sourceText) {
+    return res.status(400).json({ error: '文章内容为空，无法翻译' });
+  }
+
+  try {
+    if (titleOnly) {
+      const translatedTitle = sourceTitle ? await translateTextToChinese(sourceTitle) : '';
+      return res.json({ translatedTitle, translatedContent: '' });
+    }
+
+    const [translatedContent, translatedTitle] = await Promise.all([
+      translateTextToChinese(sourceText),
+      sourceTitle ? translateTextToChinese(sourceTitle) : Promise.resolve(''),
+    ]);
+    return res.json({ translatedContent, translatedTitle });
+  } catch (err) {
+    console.error('文章翻译失败:', err);
+    return res.status(502).json({ error: '翻译服务暂时不可用，请稍后再试' });
+  }
+});
+
+// 按段落/片段翻译（用于长文滚动时动态翻译）
+router.post('/:id/translate-snippets', validateIdParam, async (req, res) => {
+  const userId = req.user.id;
+  const articleId = Number(req.params.id);
+  const rawSnippets = req.body?.snippets;
+
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  if (!Array.isArray(rawSnippets)) {
+    return res.status(400).json({ error: 'snippets 必须是数组' });
+  }
+  if (rawSnippets.length === 0) {
+    return res.json({ translatedSnippets: [] });
+  }
+  if (rawSnippets.length > MAX_TRANSLATE_SNIPPETS) {
+    return res.status(400).json({ error: `单次最多翻译 ${MAX_TRANSLATE_SNIPPETS} 段` });
+  }
+
+  const normalized = rawSnippets.map((item) => String(item || '').trim());
+  for (const snippet of normalized) {
+    if (!snippet) {
+      return res.status(400).json({ error: '翻译片段不能为空' });
+    }
+    if (snippet.length > MAX_TRANSLATE_SNIPPET_LENGTH) {
+      return res.status(400).json({ error: `单段长度不能超过 ${MAX_TRANSLATE_SNIPPET_LENGTH} 字符` });
+    }
+  }
+
+  try {
+    const translatedSnippets = await Promise.all(
+      normalized.map((snippet) => translateTextToChinese(snippet))
+    );
+    return res.json({ translatedSnippets });
+  } catch (err) {
+    console.error('片段翻译失败:', err);
+    return res.status(502).json({ error: '翻译服务暂时不可用，请稍后再试' });
+  }
+});
+
+// 保存阅读进度（滚动位置）
+router.post('/:id/save-progress', validateIdParam, (req, res) => {
+  const userId = req.user.id;
+  const articleId = Number(req.params.id);
+
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  const scrollPosition = clampNumber(req.body?.scroll_position, 0, 99999999, 0);
+  const scrollPercentage = clampNumber(req.body?.scroll_percentage, 0, 100, 0);
+  const lastVisibleWordIndex = Math.max(0, parseInt(req.body?.last_visible_word_index, 10) || 0);
+
+  db.prepare(`
+    INSERT INTO reading_progress (user_id, article_id, scroll_position, scroll_percentage, last_visible_word_index, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, article_id) DO UPDATE SET
+      scroll_position = excluded.scroll_position,
+      scroll_percentage = excluded.scroll_percentage,
+      last_visible_word_index = excluded.last_visible_word_index,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(userId, articleId, scrollPosition, scrollPercentage, lastVisibleWordIndex);
+
+  return res.json({
+    message: '阅读进度已保存',
+    progress: {
+      scroll_position: Math.round(scrollPosition * 100) / 100,
+      scroll_percentage: Math.round(scrollPercentage * 100) / 100,
+      last_visible_word_index: lastVisibleWordIndex,
+    },
+  });
+});
+
+// 获取阅读进度（继续阅读）
+router.get('/:id/progress', validateIdParam, (req, res) => {
+  const userId = req.user.id;
+  const articleId = Number(req.params.id);
+
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  const row = db.prepare(`
+    SELECT scroll_position, scroll_percentage, last_visible_word_index, updated_at
+    FROM reading_progress
+    WHERE user_id = ? AND article_id = ?
+  `).get(userId, articleId);
+
+  if (!row) {
+    return res.json({
+      progress: {
+        scroll_position: 0,
+        scroll_percentage: 0,
+        last_visible_word_index: 0,
+        updated_at: null,
+        has_progress: false,
+      },
+    });
+  }
+
+  return res.json({
+    progress: {
+      scroll_position: Number(row.scroll_position) || 0,
+      scroll_percentage: Number(row.scroll_percentage) || 0,
+      last_visible_word_index: Number(row.last_visible_word_index) || 0,
+      updated_at: row.updated_at || null,
+      has_progress: true,
+    },
+  });
+});
+
+// 删除阅读进度（例如完成阅读后）
+router.delete('/:id/progress', validateIdParam, (req, res) => {
+  const userId = req.user.id;
+  const articleId = Number(req.params.id);
+
+  const article = db.prepare(
+    'SELECT id FROM articles WHERE id = ? AND user_id = ?'
+  ).get(articleId, userId);
+  if (!article) {
+    return res.status(404).json({ error: '文章不存在' });
+  }
+
+  db.prepare(
+    'DELETE FROM reading_progress WHERE article_id = ? AND user_id = ?'
+  ).run(articleId, userId);
+
+  return res.json({ message: '阅读进度已清除' });
+});
+
 // 在阅读过程中点击标记单词
 router.post('/:id/click-word', validateIdParam, (req, res) => {
   const userId = req.user.id;
@@ -1257,6 +1596,9 @@ router.put('/:id', validateIdParam, (req, res) => {
   if (!newTitle || !newContent) {
     return res.status(400).json({ error: '标题和内容不能为空' });
   }
+  if (newContent.length > MAX_ARTICLE_CONTENT_LENGTH) {
+    return res.status(400).json({ error: '文章内容不能为空，且不超过 100 万字符' });
+  }
 
   // 如果内容变了，重新评估难度
   let diffLevel = article.difficulty_level;
@@ -1274,13 +1616,87 @@ router.put('/:id', validateIdParam, (req, res) => {
     uniqueWordCount = uniqueWords.length;
   }
 
-  db.prepare(`
-    UPDATE articles SET
-      title = ?, content = ?,
-      difficulty_level = ?, difficulty_score = ?,
-      word_count = ?, unique_word_count = ?
-    WHERE id = ? AND user_id = ?
-  `).run(newTitle, newContent, diffLevel, diffScore, wordCount, uniqueWordCount, articleId, userId);
+  const updateArticleAndReconcile = db.transaction(() => {
+    db.prepare(`
+      UPDATE articles SET
+        title = ?, content = ?,
+        difficulty_level = ?, difficulty_score = ?,
+        word_count = ?, unique_word_count = ?
+      WHERE id = ? AND user_id = ?
+    `).run(newTitle, newContent, diffLevel, diffScore, wordCount, uniqueWordCount, articleId, userId);
+
+    if (newContent === article.content) {
+      return;
+    }
+
+    const wordRows = extractIndexedWords(newContent);
+    const clickedRows = db.prepare(`
+      SELECT id, word, word_index
+      FROM article_clicked_words
+      WHERE article_id = ? AND user_id = ?
+    `).all(articleId, userId);
+
+    for (const row of clickedRows) {
+      const clickedText = String(row.word || '').toLowerCase().trim();
+      if (!clickedText) {
+        db.prepare('DELETE FROM article_clicked_words WHERE id = ?').run(row.id);
+        continue;
+      }
+
+      // 词组：保留仍能在新内容中连续匹配到的词组，并重算索引
+      if (clickedText.includes(' ')) {
+        const phraseWords = clickedText.split(/\s+/).filter(Boolean);
+        if (phraseWords.length < 2) {
+          db.prepare('DELETE FROM article_clicked_words WHERE id = ?').run(row.id);
+          continue;
+        }
+
+        const candidates = findPhraseStartCandidates(wordRows, phraseWords);
+        const preferredStart = parsePreferredStart(row.word_index);
+        const chosenStart = pickNearest(candidates, preferredStart);
+
+        if (chosenStart === null) {
+          db.prepare('DELETE FROM article_clicked_words WHERE id = ?').run(row.id);
+          continue;
+        }
+
+        const indices = Array.from({ length: phraseWords.length }, (_, i) => chosenStart + i).join(',');
+        db.prepare('UPDATE article_clicked_words SET word_index = ? WHERE id = ?').run(indices, row.id);
+        continue;
+      }
+
+      // 单词：保留仍存在的单词，并把索引对齐到最近位置；否则删除
+      const candidates = wordRows.filter((w) => w.word === clickedText).map((w) => w.index);
+      const preferredStart = parsePreferredStart(row.word_index);
+      const chosenIndex = pickNearest(candidates, preferredStart);
+
+      if (chosenIndex === null) {
+        db.prepare('DELETE FROM article_clicked_words WHERE id = ?').run(row.id);
+        continue;
+      }
+
+      db.prepare('UPDATE article_clicked_words SET word_index = ? WHERE id = ?').run(chosenIndex, row.id);
+    }
+
+    const clickedCountRow = db.prepare(`
+      SELECT COUNT(DISTINCT word) AS clicked_count
+      FROM article_clicked_words
+      WHERE article_id = ? AND user_id = ?
+    `).get(articleId, userId);
+
+    const clickedCount = Number(clickedCountRow?.clicked_count || 0);
+    const unknownPercentage = uniqueWordCount > 0
+      ? Math.round((clickedCount / uniqueWordCount) * 1000) / 10
+      : 0;
+
+    db.prepare(`
+      UPDATE articles
+      SET unknown_word_count = ?, unknown_percentage = ?
+      WHERE id = ? AND user_id = ?
+    `).run(clickedCount, unknownPercentage, articleId, userId);
+  });
+
+  updateArticleAndReconcile();
 
   const updated = db.prepare('SELECT * FROM articles WHERE id = ?').get(articleId);
 

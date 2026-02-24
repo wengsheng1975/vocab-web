@@ -1,4 +1,4 @@
-const CRAWL_SOURCES = {
+const DEFAULT_CRAWL_SOURCES = {
   chinadaily: {
     key: 'chinadaily',
     name: 'China Daily · China',
@@ -73,6 +73,52 @@ const CRAWL_SOURCES = {
     ],
   },
 };
+
+function readBoolEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const normalized = String(raw).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return fallback;
+}
+
+function readIntEnv(name, fallback, { min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(raw)));
+}
+
+function readCsvEnv(name, fallback) {
+  const raw = process.env[name];
+  if (typeof raw !== 'string') return fallback;
+  const parsed = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+function buildSourceConfig(source) {
+  const envKey = source.key.toUpperCase();
+  return {
+    ...source,
+    feedUrl: process.env[`CRAWLER_FEED_${envKey}`] || source.feedUrl,
+    allowedHosts: readCsvEnv(`CRAWLER_ALLOWED_HOSTS_${envKey}`, source.allowedHosts),
+    defaultEnabled: readBoolEnv(`CRAWLER_ENABLED_${envKey}`, !!source.defaultEnabled),
+    defaultIntervalMinutes: readIntEnv(
+      `CRAWLER_INTERVAL_MINUTES_${envKey}`,
+      source.defaultIntervalMinutes || 180,
+      { min: 15, max: 1440 }
+    ),
+    defaultLimitPerRun: readIntEnv(
+      `CRAWLER_LIMIT_PER_RUN_${envKey}`,
+      source.defaultLimitPerRun || 3,
+      { min: 1, max: 20 }
+    ),
+  };
+}
+
+const CRAWL_SOURCES = Object.fromEntries(
+  Object.entries(DEFAULT_CRAWL_SOURCES).map(([key, source]) => [key, buildSourceConfig(source)])
+);
 
 function listSources() {
   return Object.values(CRAWL_SOURCES).map((s) => ({

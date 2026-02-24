@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { articlesAPI } from '../api'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
@@ -9,15 +9,27 @@ import PageHeader from '../components/ui/PageHeader'
 import AnimatedContent from '../components/reactbits/AnimatedContent'
 
 function ImportArticle() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const query = new URLSearchParams(location.search)
+  const editArticleId = query.get('edit')
+  const isEditMode = !!editArticleId
+  const fromReadMode = query.get('from_read') === '1'
+  const resumePctParam = query.get('resume_pct')
+  const resumePctRaw = resumePctParam === null ? NaN : Number(resumePctParam)
+  const resumePct = Number.isFinite(resumePctRaw) ? Math.max(0, Math.min(100, resumePctRaw)) : null
+
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [loadingArticle, setLoadingArticle] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [crawlError, setCrawlError] = useState('')
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
-  const navigate = useNavigate()
+  const contentTextareaRef = useRef(null)
+  const resumeAppliedRef = useRef(false)
 
   const [urlInput, setUrlInput] = useState('')
   const [urlTitle, setUrlTitle] = useState('')
@@ -48,6 +60,47 @@ function ImportArticle() {
   const [checkingTitle, setCheckingTitle] = useState(false)
   const titleDebounceRef = useRef(null)
   const prevTitleRef = useRef('')
+
+  useEffect(() => {
+    resumeAppliedRef.current = false
+  }, [editArticleId, fromReadMode, resumePct])
+
+  useEffect(() => {
+    if (!isEditMode) return
+    let mounted = true
+    setLoadingArticle(true)
+    setError('')
+    setResult(null)
+    articlesAPI.get(editArticleId)
+      .then(({ data }) => {
+        if (!mounted) return
+        setTitle(data?.article?.title || '')
+        setContent(data?.article?.content || '')
+      })
+      .catch((err) => {
+        if (!mounted) return
+        setError(err.response?.data?.error || '加载待修改文章失败')
+      })
+      .finally(() => {
+        if (mounted) setLoadingArticle(false)
+      })
+    return () => { mounted = false }
+  }, [isEditMode, editArticleId])
+
+  useEffect(() => {
+    if (!isEditMode || loadingArticle || !fromReadMode || resumePct === null || resumeAppliedRef.current) return
+    const applyScroll = () => {
+      const el = contentTextareaRef.current
+      if (!el) return
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
+      el.scrollTop = (resumePct / 100) * maxScroll
+      resumeAppliedRef.current = true
+    }
+    requestAnimationFrame(() => {
+      applyScroll()
+      setTimeout(applyScroll, 50)
+    })
+  }, [isEditMode, loadingArticle, fromReadMode, resumePct, content])
 
   const triggerCheck = useCallback((text) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -88,6 +141,7 @@ function ImportArticle() {
   }, [])
 
   useEffect(() => {
+    if (isEditMode) return
     let mounted = true
     articlesAPI.getCrawlerSources()
       .then(({ data }) => {
@@ -101,7 +155,7 @@ function ImportArticle() {
         setCrawlSources([])
       })
     return () => { mounted = false }
-  }, [])
+  }, [isEditMode])
 
   useEffect(() => {
     if (content !== prevContentRef.current) {
@@ -195,10 +249,23 @@ function ImportArticle() {
   const warningIssues = activeIssues.filter(i => i.severity === 'warning')
 
   const handleImport = async (e) => {
-    e.preventDefault(); setError(''); setLoading(true)
-    try { const { data } = await articlesAPI.import({ title, content }); setResult(data) }
-    catch (err) { setError(err.response?.data?.error || '导入失败') }
-    finally { setLoading(false) }
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      if (isEditMode) {
+        await articlesAPI.update(editArticleId, { title, content })
+        const resumePart = fromReadMode && resumePct !== null ? `?resume_pct=${encodeURIComponent(String(resumePct))}` : ''
+        navigate(`/read/${editArticleId}${resumePart}`)
+      } else {
+        const { data } = await articlesAPI.import({ title, content })
+        setResult(data)
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || (isEditMode ? '保存修改失败' : '导入失败'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleImportFromUrl = async (e) => {
@@ -293,7 +360,7 @@ function ImportArticle() {
         <span key={`i-${issue.offset}`} className="grammar-error" onMouseEnter={() => setHoveredIssue(issue)} onMouseLeave={() => setHoveredIssue(null)}>
           {content.substring(issue.offset, issue.offset + issue.length)}
           {hoveredIssue === issue && (
-            <span className="absolute left-0 top-full mt-1 bg-white border border-surface-200 rounded-lg shadow-lg p-2.5 z-50 min-w-[200px] max-w-[320px] text-[13px] leading-relaxed whitespace-normal no-underline">
+            <span className="absolute left-0 top-full mt-1 bg-white border border-surface-200 rounded-lg shadow-lg p-2.5 z-50 w-[min(90vw,320px)] text-[13px] leading-relaxed whitespace-normal no-underline">
               <span className="block text-surface-700 mb-1.5">{issue.message}</span>
               {issue.suggestions.length > 0 && (
                 <span className="flex gap-1 flex-wrap mb-1.5">
@@ -314,13 +381,23 @@ function ImportArticle() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <PageHeader title="导入文章" />
+    <div className="max-w-4xl mx-auto">
+      <PageHeader title={isEditMode ? '修改文章' : '导入文章'}>
+        <span className="toc-chip">{isEditMode ? '内容修订' : '内容导入'}</span>
+      </PageHeader>
       <AnimatedContent distance={20} duration={0.5}>
-        {!result ? (
-          <div className="space-y-4">
-            <Card padding="p-5 sm:p-7">
-              <h3 className="text-[15px] font-semibold text-surface-800 mb-2">网站抓取导入（MVP）</h3>
+        {loadingArticle ? (
+          <Card padding="p-7">
+            <div className="text-[13px] text-surface-500">正在加载文章内容...</div>
+          </Card>
+        ) : !result ? (
+          <div className="space-y-5">
+            {!isEditMode && (
+            <Card padding="p-6 sm:p-8">
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                <h3 className="text-[15px] font-semibold text-surface-800">网站抓取导入（MVP）</h3>
+                <span className="text-[11px] font-semibold px-2 py-1 rounded-md bg-primary-50 text-primary-700 border border-primary-100">Source Feed</span>
+              </div>
               <p className="text-[13px] text-surface-500 leading-relaxed mb-4">
                 支持从 China Daily 等白名单站点抓取文章。可选择「单链接导入」或「按来源批量抓取」。
               </p>
@@ -328,7 +405,7 @@ function ImportArticle() {
               {crawlError && <Alert type="error" className="mb-4">{crawlError}</Alert>}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                <div className="p-3.5 bg-surface-50 rounded-lg border border-surface-200/70">
+                <div className="p-3.5 bg-surface-50/75 rounded-xl border border-surface-200/75">
                   <h4 className="text-[13px] font-medium text-surface-700 mb-2">单链接导入</h4>
                   <form onSubmit={handleImportFromUrl} className="space-y-2.5">
                     <input
@@ -352,7 +429,7 @@ function ImportArticle() {
                   </form>
                 </div>
 
-                <div className="p-3.5 bg-surface-50 rounded-lg border border-surface-200/70">
+                <div className="p-3.5 bg-surface-50/75 rounded-xl border border-surface-200/75">
                   <h4 className="text-[13px] font-medium text-surface-700 mb-2">按来源抓取</h4>
                   <div className="space-y-2.5">
                     <select
@@ -402,7 +479,7 @@ function ImportArticle() {
               {crawlPreviewItems.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-[12px] font-medium text-surface-500">预览文章</h4>
-                  <div className="max-h-52 overflow-y-auto border border-surface-200 rounded-lg divide-y divide-surface-100 bg-white">
+                  <div className="max-h-52 overflow-y-auto border border-surface-200 rounded-xl divide-y divide-surface-100 bg-white">
                     {crawlPreviewItems.map((item, idx) => (
                       <div key={`${item.url}-${idx}`} className="px-3 py-2.5 text-[13px] flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -430,10 +507,17 @@ function ImportArticle() {
                 </div>
               )}
             </Card>
+            )}
 
-            <Card padding="p-5 sm:p-7">
+            <Card padding="p-6 sm:p-8">
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+                <span className="text-[11px] font-semibold px-2 py-1 rounded-md bg-accent-50 text-accent-700 border border-accent-100">Article Editor</span>
+                <span className="text-[11px] text-surface-500">标题与正文支持实时校对</span>
+              </div>
               <p className="text-[13px] text-surface-500 leading-relaxed mb-5">
-                粘贴一篇英文文章，系统会自动检查语法并评估难度。阅读时可以点击不认识的单词加入生词库。
+                {isEditMode
+                  ? '您正在修改已导入文章。可继续语法检查、补充内容，保存后将返回阅读页面。'
+                  : '粘贴一篇英文文章，系统会自动检查语法并评估难度。阅读时可以点击不认识的单词加入生词库。'}
               </p>
               {error && <Alert type="error" className="mb-4">{error}</Alert>}
               <form onSubmit={handleImport} className="space-y-4">
@@ -482,7 +566,7 @@ function ImportArticle() {
                     <span className="text-[11px] text-surface-400">.txt .docx .pdf</span>
                   </div>
                 </div>
-                <textarea value={content} onChange={handleContentChange} placeholder="手动输入、粘贴文本，或点击上方按钮打开本地文件..." rows={12} required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 outline-none resize-y focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all duration-150 leading-relaxed" />
+                <textarea ref={contentTextareaRef} value={content} onChange={handleContentChange} placeholder="手动输入、粘贴文本，或点击上方按钮打开本地文件..." rows={12} required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 outline-none resize-y focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 transition-all duration-150 leading-relaxed" />
               </div>
               {(autoFixedCount > 0 || activeIssues.length > 0) && (
                 <div className="flex flex-wrap items-center gap-3 px-3 py-2 bg-surface-50 rounded-lg text-[12px]">
@@ -493,14 +577,26 @@ function ImportArticle() {
               )}
               {renderAnnotatedPreview()}
               <Button type="submit" size="full" disabled={loading || checking}>
-                {loading ? '正在分析...' : checking ? '正在检查语法...' : '导入并分析'}
+                {loading
+                  ? (isEditMode ? '保存中...' : '正在分析...')
+                  : checking
+                    ? '正在检查语法...'
+                    : (isEditMode ? '保存修改并返回阅读' : '导入并分析')}
               </Button>
+              {isEditMode && (
+                <Button type="button" variant="secondary" size="full" onClick={() => {
+                  const resumePart = fromReadMode && resumePct !== null ? `?resume_pct=${encodeURIComponent(String(resumePct))}` : ''
+                  navigate(`/read/${editArticleId}${resumePart}`)
+                }}>
+                  放弃修改，返回阅读
+                </Button>
+              )}
               </form>
             </Card>
           </div>
         ) : (
           <div className="space-y-4">
-            <Card padding="p-5 sm:p-7">
+            <Card padding="p-6 sm:p-8">
               <h2 className="text-lg font-bold text-surface-800 mb-5">{result.article.title}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
                 {[
@@ -542,7 +638,7 @@ function ImportArticle() {
                 </div>
               </div>
             </Card>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button onClick={startReading} className="flex-1">开始阅读</Button>
               <Button variant="secondary" onClick={() => { setResult(null); setTitle(''); setContent(''); setIssues([]); setAutoFixedCount(0) }}>重新导入</Button>
             </div>

@@ -26,10 +26,10 @@ function App() {
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
   const mainClassName = isAuthPage
     ? 'flex-1 w-full'
-    : 'flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8'
+    : 'flex-1 max-w-[68rem] mx-auto w-full px-4 sm:px-7 py-7 sm:py-10'
 
   return (
-    <div className="min-h-screen bg-surface-50 flex flex-col">
+    <div className="min-h-screen app-shell flex flex-col">
       {user && <Navbar />}
       <main className={mainClassName}>
         <Routes>

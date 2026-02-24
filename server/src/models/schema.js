@@ -176,6 +176,22 @@ function initDatabase() {
     )
   `);
 
+  // 阅读进度（用于继续阅读时恢复位置）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reading_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      article_id INTEGER NOT NULL,
+      scroll_position REAL DEFAULT 0,
+      scroll_percentage REAL DEFAULT 0,
+      last_visible_word_index INTEGER DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+      UNIQUE(user_id, article_id)
+    )
+  `);
+
   // 用户水平历史记录
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_level_history (
@@ -241,6 +257,7 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_vocabulary_word ON vocabulary(user_id, word);
     CREATE INDEX IF NOT EXISTS idx_word_meanings_vocab ON word_meanings(vocabulary_id);
     CREATE INDEX IF NOT EXISTS idx_clicked_words_article ON article_clicked_words(article_id);
+    CREATE INDEX IF NOT EXISTS idx_reading_progress_user ON reading_progress(user_id);
     CREATE INDEX IF NOT EXISTS idx_reading_sessions_user ON reading_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_level_history_user ON user_level_history(user_id);
     CREATE INDEX IF NOT EXISTS idx_crawler_settings_user ON crawler_source_settings(user_id);

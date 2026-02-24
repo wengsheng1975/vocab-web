@@ -104,12 +104,12 @@ function Login() {
     <div className="min-h-screen flex flex-col">
       <div className="flex-1 flex">
         {/* Left Panel — Hero with Aurora */}
-        <div className="hidden lg:flex lg:w-1/2 relative bg-surface-900 overflow-hidden">
+        <div className="hidden lg:flex lg:w-1/2 relative hero-panel overflow-hidden">
           <Aurora
-            colorStops={['#4f46e5', '#0891b2', '#7c3aed', '#0284c7']}
-            speed={8}
-            blur={100}
-            opacity={0.35}
+            colorStops={['#158271', '#43b9a8', '#f97316', '#124f47']}
+            speed={9}
+            blur={96}
+            opacity={0.34}
             size={65}
           />
 
@@ -118,7 +118,7 @@ function Login() {
             <div className="flex items-center gap-2.5">
               <svg className="w-8 h-8 text-white/80" viewBox="0 0 28 28" fill="none">
                 <rect width="28" height="28" rx="7" fill="currentColor" />
-                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="#4f46e5" fontSize="14" fontWeight="800" fontFamily="system-ui">E</text>
+                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="#158271" fontSize="14" fontWeight="800" fontFamily="inherit">E</text>
               </svg>
               <svg className="w-7 h-7 text-white/50" viewBox="0 0 24 24" fill="none" strokeWidth="1.5" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
@@ -133,7 +133,7 @@ function Login() {
               <SplitText
                 text="通过阅读，提升英语水平"
                 tag="h1"
-                className="text-[clamp(1.75rem,3.5vw,2.75rem)] font-extrabold text-white leading-[1.15] tracking-tight whitespace-nowrap"
+                className="text-[clamp(1.8rem,3.5vw,2.85rem)] font-extrabold text-white leading-[1.15] tracking-tight text-center"
                 splitType="chars"
                 textAlign="center"
                 delay={30}
@@ -143,7 +143,7 @@ function Login() {
               />
               <BlurText
                 text="动态识别生词，追踪学习进度，让每一次阅读都有所收获。"
-                className="text-[clamp(0.8rem,1.1vw,1rem)] text-white/50 leading-relaxed text-center"
+                className="text-[clamp(0.82rem,1.1vw,1rem)] text-white/60 leading-relaxed text-center"
                 delay={40}
                 stepDuration={0.3}
               />
@@ -157,13 +157,13 @@ function Login() {
         </div>
 
         {/* Right Panel — Form */}
-        <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-white">
-          <div className="w-full max-w-sm">
+        <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-surface-50/70">
+          <div className="w-full max-w-md rounded-3xl border border-surface-200/80 bg-white/92 p-6 sm:p-8 shadow-[0_16px_34px_rgba(17,63,57,0.12)]">
             {/* Mobile logo */}
-            <div className="lg:hidden flex items-center gap-2 mb-10">
+            <div className="lg:hidden flex items-center gap-2 mb-8">
               <svg className="w-7 h-7 text-primary-600" viewBox="0 0 28 28" fill="none">
                 <rect width="28" height="28" rx="7" fill="currentColor" />
-                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="14" fontWeight="800" fontFamily="system-ui">E</text>
+                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="14" fontWeight="800" fontFamily="inherit">E</text>
               </svg>
               <svg className="w-6 h-6 text-primary-400" viewBox="0 0 24 24" fill="none" strokeWidth="1.5" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
@@ -172,6 +172,7 @@ function Login() {
             </div>
 
             <div className="mb-8">
+              <span className="inline-flex items-center text-[11px] font-semibold px-2 py-1 rounded-md bg-primary-50 text-primary-700 border border-primary-100 mb-2">账户入口</span>
               <h2 className="text-xl font-bold text-surface-800 mb-1">欢迎回来</h2>
               <p className="text-[13px] text-surface-400">
                 登录您的账号，继续学习之旅
@@ -208,7 +209,7 @@ function Login() {
                       onChange={(e) => setForgotEmail(e.target.value)}
                       placeholder="请输入注册邮箱"
                       required
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15"
                     />
                   </div>
                   <Button type="submit" size="full" disabled={forgotLoading}>
@@ -246,7 +247,7 @@ function Login() {
                     placeholder="请输入用户名或邮箱"
                     autoComplete="username"
                     disabled={isDisabled}
-                    className={`w-full pl-10 pr-3.5 py-2.5 bg-white border rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 disabled:opacity-60 disabled:cursor-not-allowed ${usernameHint ? 'border-red-300' : 'border-surface-200'}`}
+                    className={`w-full pl-10 pr-3.5 py-2.5 bg-white border rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 disabled:opacity-60 disabled:cursor-not-allowed ${usernameHint ? 'border-red-300' : 'border-surface-200'}`}
                   />
                 </div>
                 {usernameHint && (
@@ -279,7 +280,7 @@ function Login() {
                     placeholder="请输入密码"
                     autoComplete="current-password"
                     disabled={isDisabled}
-                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
@@ -321,7 +322,7 @@ function Login() {
             </div>
 
             {/* Demo login with credentials hint */}
-            <div className="space-y-2">
+            <div className="space-y-2 p-3 rounded-xl bg-surface-50/80 border border-surface-200/70">
               <Button variant="secondary" size="full" onClick={handleDemo} disabled={isDisabled}>
                 {demoLoading ? (
                   <span className="flex items-center gap-2">

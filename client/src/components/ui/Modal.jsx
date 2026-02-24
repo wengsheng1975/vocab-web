@@ -17,11 +17,11 @@ export default function Modal({ open, onClose, children, maxWidth = 'max-w-xl' }
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-surface-900/40 backdrop-blur-sm animate-fade-in"
+        className="absolute inset-0 bg-surface-900/45 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
       {/* Panel */}
-      <div className={`relative w-full ${maxWidth} max-h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in`}>
+      <div className={`relative w-full ${maxWidth} max-h-[85vh] bg-white rounded-3xl shadow-[0_20px_50px_rgba(23,34,32,0.35)] flex flex-col overflow-hidden animate-scale-in border border-surface-200/70`}>
         {children}
       </div>
     </div>,
@@ -31,7 +31,7 @@ export default function Modal({ open, onClose, children, maxWidth = 'max-w-xl' }
 
 export function ModalHeader({ children, onClose }) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100">
+    <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100 bg-surface-50/70">
       <h2 className="text-lg font-bold text-surface-800">{children}</h2>
       {onClose && (
         <button
@@ -57,7 +57,7 @@ export function ModalBody({ children, className = '' }) {
 
 export function ModalFooter({ children }) {
   return (
-    <div className="flex items-center gap-3 px-6 py-4 border-t border-surface-100 bg-surface-50/50">
+    <div className="flex items-center gap-3 px-6 py-4 border-t border-surface-100 bg-surface-50/80">
       {children}
     </div>
   )

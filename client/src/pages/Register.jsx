@@ -58,12 +58,12 @@ function Register() {
     <div className="min-h-screen flex flex-col">
       <div className="flex-1 flex">
         {/* Left Panel — Hero with Aurora */}
-        <div className="hidden lg:flex lg:w-1/2 relative bg-surface-900 p-12 flex-col justify-between overflow-hidden">
+        <div className="hidden lg:flex lg:w-1/2 relative hero-panel p-12 flex-col justify-between overflow-hidden">
           <Aurora
-            colorStops={['#0891b2', '#4f46e5', '#0284c7', '#7c3aed']}
-            speed={8}
-            blur={100}
-            opacity={0.35}
+            colorStops={['#158271', '#43b9a8', '#f97316', '#124f47']}
+            speed={9}
+            blur={96}
+            opacity={0.34}
             size={65}
           />
 
@@ -71,7 +71,7 @@ function Register() {
             <div className="flex items-center gap-2.5">
               <svg className="w-8 h-8 text-white/80" viewBox="0 0 28 28" fill="none">
                 <rect width="28" height="28" rx="7" fill="currentColor" />
-                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="#0891b2" fontSize="14" fontWeight="800" fontFamily="system-ui">E</text>
+                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="#158271" fontSize="14" fontWeight="800" fontFamily="inherit">E</text>
               </svg>
               <svg className="w-7 h-7 text-white/50" viewBox="0 0 24 24" fill="none" strokeWidth="1.5" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
@@ -84,7 +84,7 @@ function Register() {
             <SplitText
               text="开始您的英语学习之旅"
               tag="h1"
-              className="text-[2.5rem] font-extrabold text-white leading-[1.15] tracking-tight"
+              className="text-[clamp(1.85rem,3.3vw,2.8rem)] font-extrabold text-white leading-[1.15] tracking-tight"
               splitType="chars"
               delay={30}
               duration={0.6}
@@ -105,17 +105,18 @@ function Register() {
         </div>
 
         {/* Right Panel — Form */}
-        <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-white">
-          <div className="w-full max-w-sm">
-            <div className="lg:hidden flex items-center gap-2 mb-10">
+        <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-surface-50/70">
+          <div className="w-full max-w-md rounded-3xl border border-surface-200/80 bg-white/92 p-6 sm:p-8 shadow-[0_16px_34px_rgba(17,63,57,0.12)]">
+            <div className="lg:hidden flex items-center gap-2 mb-8">
               <svg className="w-7 h-7 text-primary-600" viewBox="0 0 28 28" fill="none">
                 <rect width="28" height="28" rx="7" fill="currentColor" />
-                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="14" fontWeight="800" fontFamily="system-ui">E</text>
+                <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="14" fontWeight="800" fontFamily="inherit">E</text>
               </svg>
               <span className="font-semibold text-surface-800 text-base tracking-tight">EnglishReader</span>
             </div>
 
             <div className="mb-8">
+              <span className="inline-flex items-center text-[11px] font-semibold px-2 py-1 rounded-md bg-primary-50 text-primary-700 border border-primary-100 mb-2">创建账户</span>
               <h2 className="text-xl font-bold text-surface-800 mb-1">创建账号</h2>
               <p className="text-[13px] text-surface-400">填写信息，开始您的学习旅程</p>
             </div>
@@ -125,19 +126,19 @@ function Register() {
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-surface-600">用户名</label>
-                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="请输入用户名" required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
+                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="请输入用户名" required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-surface-600">邮箱</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-surface-600">密码</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少6位，须含字母和数字" minLength={6} required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少6位，须含字母和数字" minLength={6} required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-surface-600">确认密码</label>
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="请再次输入密码" required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-lg text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="请再次输入密码" required className="w-full px-3.5 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-800 placeholder-surface-400 transition-all duration-150 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15" />
               </div>
 
               <Button type="submit" size="full" disabled={loading}>

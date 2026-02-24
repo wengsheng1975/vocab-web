@@ -63,16 +63,18 @@ function ReadingReport() {
   ]
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <PageHeader title="阅读报告">
-        <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium truncate max-w-xs">{articleTitle}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="toc-chip">报告目录</span>
+          <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium truncate max-w-xs">{articleTitle}</span>
+        </div>
       </PageHeader>
 
-      {/* Summary Cards */}
       <AnimatedContent stagger={0.08} distance={20} duration={0.5}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           {reportCards.map(({ icon, value, label, sub, accent }) => (
-            <div key={label} className={`rounded-xl border-l-[3px] p-4 ${accent}`}>
+            <div key={label} className={`rounded-2xl border-l-[3px] border border-surface-200/70 p-4 shadow-[0_8px_24px_rgba(23,34,32,0.05)] ${accent}`}>
               <div className="text-surface-500 mb-1.5">{icon}</div>
               <div className="text-2xl font-bold text-surface-800"><CountUp to={value} duration={1} /></div>
               <div className="text-[13px] text-surface-500 font-medium">{label}</div>
@@ -82,9 +84,8 @@ function ReadingReport() {
         </div>
       </AnimatedContent>
 
-      {/* Analysis */}
       <AnimatedContent distance={15} duration={0.5} delay={0.1}>
-        <div className="space-y-3 mb-8">
+        <div className="space-y-4 mb-8">
           <Card>
             <h3 className="font-semibold text-surface-800 text-[15px] mb-3">阅读分析</h3>
             <div className="flex flex-wrap gap-5">
@@ -101,7 +102,7 @@ function ReadingReport() {
 
           <Card>
             <h3 className="font-semibold text-surface-800 text-[15px] mb-2.5">学习建议</h3>
-            <div className="p-3.5 bg-sky-50/80 rounded-lg text-[13px] text-sky-700 leading-relaxed">
+            <div className="p-3.5 bg-primary-50/75 border border-primary-100 rounded-xl text-[13px] text-primary-800 leading-relaxed">
               {unknownPct < 5 ? (
                 <p>生词率很低 ({unknownPct}%)，这篇文章对您来说比较简单。可以尝试阅读更有挑战性的文章来提升水平。</p>
               ) : unknownPct < 15 ? (
@@ -115,14 +116,14 @@ function ReadingReport() {
           </Card>
 
           {highFreq.length > 0 && (
-            <Card className="!border-l-[3px] !border-l-amber-400">
+            <Card className="!border-l-[3px] !border-l-accent-500">
               <h3 className="font-semibold text-surface-800 text-[15px] mb-1">高频生词警告</h3>
               <p className="text-[12px] text-surface-400 mb-3">以下单词您在多篇文章中都不认识，请务必重点学习：</p>
               <div className="space-y-1.5">
                 {highFreq.map((w, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2 bg-amber-50/80 rounded-lg">
-                    <span className="font-semibold text-amber-700 text-[13px]">{w.word}</span>
-                    <span className="text-[12px] text-amber-500">已出现 {w.count} 次</span>
+                  <div key={i} className="flex items-center justify-between px-3 py-2 bg-accent-50/70 border border-accent-100 rounded-xl">
+                    <span className="font-semibold text-accent-700 text-[13px]">{w.word}</span>
+                    <span className="text-[12px] text-accent-600">已出现 {w.count} 次</span>
                   </div>
                 ))}
               </div>
@@ -131,8 +132,7 @@ function ReadingReport() {
         </div>
       </AnimatedContent>
 
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
         <Link to="/vocabulary" className="flex-1"><Button size="full">查看生词本</Button></Link>
         <Link to="/import"><Button variant="secondary" size="md">继续阅读新文章</Button></Link>
         <Link to="/"><Button variant="ghost" size="md">返回首页</Button></Link>

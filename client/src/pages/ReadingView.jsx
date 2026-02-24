@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { articlesAPI } from '../api'
 import Button from '../components/ui/Button'
 import { DiffBadge } from '../components/ui/Badge'
@@ -50,9 +50,54 @@ function findWordIndexByChar(tokens, charIndex) {
   return null
 }
 
+function splitParagraphs(text) {
+  const normalized = String(text || '').replace(/\r\n/g, '\n').trim()
+  if (!normalized) return []
+
+  const chunkBySentence = (input, maxLen = 1200) => {
+    const source = String(input || '').trim()
+    if (!source) return []
+    if (source.length <= maxLen) return [source]
+
+    const chunks = []
+    let start = 0
+    while (start < source.length) {
+      let end = Math.min(start + maxLen, source.length)
+      if (end < source.length) {
+        const window = source.slice(start, end)
+        const nearestBreak = Math.max(
+          window.lastIndexOf('\n'),
+          window.lastIndexOf('. '),
+          window.lastIndexOf('! '),
+          window.lastIndexOf('? '),
+          window.lastIndexOf('。'),
+          window.lastIndexOf('！'),
+          window.lastIndexOf('？'),
+          window.lastIndexOf('; '),
+          window.lastIndexOf(', ')
+        )
+        if (nearestBreak > maxLen * 0.35) {
+          end = start + nearestBreak + 1
+        }
+      }
+      const piece = source.slice(start, end).trim()
+      if (piece) chunks.push(piece)
+      start = end
+    }
+    return chunks
+  }
+
+  return normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .flatMap((p) => chunkBySentence(p, 1200))
+}
+
 function ReadingView() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [article, setArticle] = useState(null)
   const [tokens, setTokens] = useState([])
   const [clickedWords, setClickedWords] = useState(new Set())
@@ -64,7 +109,14 @@ function ReadingView() {
   const [voiceGender, setVoiceGender] = useState('female')
   const [speechSpeed, setSpeechSpeed] = useState('medium')
   const [speechStatus, setSpeechStatus] = useState('idle') // idle | speaking | paused
+  const [viewLanguage, setViewLanguage] = useState('en') // en | zh
+  const [translatedTitle, setTranslatedTitle] = useState('')
+  const [translatedParagraphMap, setTranslatedParagraphMap] = useState({})
+  const [translatingParagraphs, setTranslatingParagraphs] = useState(new Set())
+  const [translating, setTranslating] = useState(false)
   const [activeSpokenWordIndex, setActiveSpokenWordIndex] = useState(null)
+  const [savedProgress, setSavedProgress] = useState({ scrollPosition: 0, scrollPercentage: 0, lastVisibleWordIndex: 0, hasProgress: false })
+  const [scrollTopY, setScrollTopY] = useState(0)
 
   // 拼写建议弹窗
   const [spellPopup, setSpellPopup] = useState(null) // { word, wordIndex, suggestions, x, y }
@@ -76,12 +128,29 @@ function ReadingView() {
   const speechUtteranceRef = useRef(null)
   const speechTextRef = useRef('')
   const speechCharIndexRef = useRef(0)
+  const restoreDoneRef = useRef(false)
+  const lastSavedProgressRef = useRef({ scroll_position: -1, scroll_percentage: -1, last_visible_word_index: -1 })
+  const saveTimerRef = useRef(null)
+  const saveInFlightRef = useRef(false)
+  const topReturnProgressRef = useRef(null)
+  const paragraphRefs = useRef(new Map())
+  const paragraphObserverRef = useRef(null)
+  const translatedParagraphMapRef = useRef({})
+  const translatingParagraphsRef = useRef(new Set())
 
   const stateRef = useRef({})
   stateRef.current = { dragStart, dragEnd, clickedWords, phrases, tokens }
   const speedOrder = ['slow', 'medium', 'fast']
   const speedRateMap = { slow: 0.5, medium: 0.9, fast: 1.3 }
   const speedLabelMap = { slow: '慢速', medium: '中速', fast: '快速' }
+
+  useEffect(() => {
+    translatedParagraphMapRef.current = translatedParagraphMap
+  }, [translatedParagraphMap])
+
+  useEffect(() => {
+    translatingParagraphsRef.current = translatingParagraphs
+  }, [translatingParagraphs])
 
   function stopSpeech(updateState = true, resetProgress = true) {
     const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
@@ -235,8 +304,82 @@ function ReadingView() {
     }
   }
 
+  function getMaxScrollY() {
+    const doc = document.documentElement
+    return Math.max(0, doc.scrollHeight - window.innerHeight)
+  }
+
+  function getNearestVisibleWordIndex() {
+    const els = document.querySelectorAll('[data-word-index]')
+    const threshold = 120
+    for (const el of els) {
+      const top = el.getBoundingClientRect().top
+      if (top >= threshold) {
+        const idx = Number(el.getAttribute('data-word-index'))
+        if (Number.isInteger(idx) && idx >= 0) return idx
+      }
+    }
+    return 0
+  }
+
+  function collectProgressSnapshot() {
+    const scrollPosition = Math.max(0, window.scrollY || 0)
+    const maxScroll = getMaxScrollY()
+    const scrollPercentage = maxScroll > 0 ? (scrollPosition / maxScroll) * 100 : 0
+    const lastVisibleWordIndex = getNearestVisibleWordIndex()
+    return {
+      scroll_position: Math.round(scrollPosition * 100) / 100,
+      scroll_percentage: Math.round(Math.max(0, Math.min(100, scrollPercentage)) * 100) / 100,
+      last_visible_word_index: lastVisibleWordIndex,
+    }
+  }
+
+  const persistReadingProgress = async (force = false) => {
+    if (!article || saveInFlightRef.current) return
+    const next = collectProgressSnapshot()
+    const prev = lastSavedProgressRef.current
+    const sameAsPrev =
+      Math.abs((next.scroll_position || 0) - (prev.scroll_position || 0)) < 8 &&
+      Math.abs((next.scroll_percentage || 0) - (prev.scroll_percentage || 0)) < 0.2 &&
+      next.last_visible_word_index === prev.last_visible_word_index
+    if (!force && sameAsPrev) return
+
+    saveInFlightRef.current = true
+    try {
+      await articlesAPI.saveProgress(id, next)
+      lastSavedProgressRef.current = next
+      setSavedProgress({
+        scrollPosition: next.scroll_position,
+        scrollPercentage: next.scroll_percentage,
+        lastVisibleWordIndex: next.last_visible_word_index,
+        hasProgress: true,
+      })
+    } catch (err) {
+      console.error('保存阅读进度失败:', err)
+    } finally {
+      saveInFlightRef.current = false
+    }
+  }
+
   useEffect(() => {
     stopSpeech(true, true)
+    setViewLanguage('en')
+    setTranslatedTitle('')
+    setTranslatedParagraphMap({})
+    setTranslatingParagraphs(new Set())
+    setTranslating(false)
+    setSavedProgress({ scrollPosition: 0, scrollPercentage: 0, lastVisibleWordIndex: 0, hasProgress: false })
+    setScrollTopY(0)
+    restoreDoneRef.current = false
+    lastSavedProgressRef.current = { scroll_position: -1, scroll_percentage: -1, last_visible_word_index: -1 }
+    topReturnProgressRef.current = null
+    translatedParagraphMapRef.current = {}
+    translatingParagraphsRef.current = new Set()
+    paragraphRefs.current = new Map()
+    if (paragraphObserverRef.current) {
+      paragraphObserverRef.current.disconnect()
+      paragraphObserverRef.current = null
+    }
     loadArticle()
   }, [id])
 
@@ -254,7 +397,11 @@ function ReadingView() {
 
   const loadArticle = async () => {
     try {
-      const { data } = await articlesAPI.get(id)
+      const [articleRes, progressRes] = await Promise.all([
+        articlesAPI.get(id),
+        articlesAPI.getProgress(id).catch(() => ({ data: { progress: null } })),
+      ])
+      const data = articleRes.data
       setArticle(data.article)
       const toks = tokenize(data.article.content)
       setTokens(toks)
@@ -268,12 +415,97 @@ function ReadingView() {
           .map(p => ({ text: p.text, indices: p.indices }))
         setPhrases(restoredPhrases)
       }
+
+      const progress = progressRes?.data?.progress
+      const normalizedProgress = {
+        scrollPosition: Number(progress?.scroll_position) || 0,
+        scrollPercentage: Number(progress?.scroll_percentage) || 0,
+        lastVisibleWordIndex: Number(progress?.last_visible_word_index) || 0,
+        hasProgress: Boolean(progress?.has_progress),
+      }
+      setSavedProgress(normalizedProgress)
+      if (normalizedProgress.hasProgress) {
+        lastSavedProgressRef.current = {
+          scroll_position: normalizedProgress.scrollPosition,
+          scroll_percentage: normalizedProgress.scrollPercentage,
+          last_visible_word_index: normalizedProgress.lastVisibleWordIndex,
+        }
+      }
     } catch (err) {
       console.error('加载文章失败:', err)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (loading || !article || restoreDoneRef.current) return
+
+    const qs = new URLSearchParams(location.search)
+    const queryPctParam = qs.get('resume_pct')
+    const queryPct = queryPctParam === null ? NaN : Number(queryPctParam)
+    const hasQueryPct = Number.isFinite(queryPct) && queryPct >= 0
+
+    const restore = () => {
+      const maxScroll = getMaxScrollY()
+      let target = 0
+      if (hasQueryPct) {
+        target = Math.min(maxScroll, Math.max(0, (Math.min(queryPct, 100) / 100) * maxScroll))
+      } else if (savedProgress.hasProgress) {
+        if (savedProgress.scrollPercentage > 0) {
+          target = Math.min(maxScroll, (savedProgress.scrollPercentage / 100) * maxScroll)
+        } else {
+          target = Math.min(maxScroll, Math.max(0, savedProgress.scrollPosition || 0))
+        }
+      }
+      window.scrollTo({ top: target, behavior: 'auto' })
+      setScrollTopY(target)
+    }
+
+    restoreDoneRef.current = true
+    requestAnimationFrame(() => {
+      restore()
+      setTimeout(restore, 60)
+    })
+  }, [loading, article, savedProgress, location.search])
+
+  useEffect(() => {
+    if (!article) return undefined
+
+    const onScroll = () => {
+      setScrollTopY(Math.max(0, window.scrollY || 0))
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => {
+        persistReadingProgress(false)
+      }, 600)
+    }
+
+    const flushProgress = () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      persistReadingProgress(true)
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushProgress()
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('beforeunload', flushProgress)
+    window.addEventListener('pagehide', flushProgress)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('beforeunload', flushProgress)
+      window.removeEventListener('pagehide', flushProgress)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      persistReadingProgress(true)
+    }
+  }, [article, id])
 
   const phraseIndexMap = useMemo(() => {
     const map = new Map()
@@ -287,6 +519,100 @@ function ReadingView() {
     const max = Math.max(dragStart, dragEnd)
     return new Set(tokens.filter(t => t.type === 'word' && t.index >= min && t.index <= max).map(t => t.index))
   }, [dragStart, dragEnd, tokens])
+
+  const contentParagraphs = useMemo(() => splitParagraphs(article?.content || ''), [article?.content])
+
+  const ensureParagraphTranslations = async (indices = []) => {
+    if (!contentParagraphs.length) return
+    const uniqueIndices = [...new Set(indices)]
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < contentParagraphs.length)
+    if (!uniqueIndices.length) return
+
+    const pending = uniqueIndices.filter((idx) => {
+      if (translatedParagraphMapRef.current[idx]) return false
+      if (translatingParagraphsRef.current.has(idx)) return false
+      return true
+    })
+    if (!pending.length) return
+
+    pending.forEach((idx) => translatingParagraphsRef.current.add(idx))
+    setTranslatingParagraphs(new Set(translatingParagraphsRef.current))
+
+    try {
+      const snippets = pending.map((idx) => contentParagraphs[idx])
+      const { data } = await articlesAPI.translateSnippets(id, { snippets })
+      const translatedSnippets = Array.isArray(data?.translatedSnippets) ? data.translatedSnippets : []
+      setTranslatedParagraphMap((prev) => {
+        const next = { ...prev }
+        pending.forEach((idx, i) => {
+          const translated = String(translatedSnippets[i] || '').trim()
+          next[idx] = translated || contentParagraphs[idx]
+        })
+        return next
+      })
+    } catch (err) {
+      console.error('段落翻译失败:', err)
+    } finally {
+      pending.forEach((idx) => translatingParagraphsRef.current.delete(idx))
+      setTranslatingParagraphs(new Set(translatingParagraphsRef.current))
+    }
+  }
+
+  const getPrefetchIndices = (centerIndex) => {
+    const result = []
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const idx = centerIndex + offset
+      if (idx >= 0 && idx < contentParagraphs.length) result.push(idx)
+    }
+    return result
+  }
+
+  const setZhParagraphRef = (idx) => (el) => {
+    const map = paragraphRefs.current
+    if (el) map.set(idx, el)
+    else map.delete(idx)
+  }
+
+  useEffect(() => {
+    if (viewLanguage !== 'zh' || !contentParagraphs.length) return undefined
+
+    if (!paragraphObserverRef.current) {
+      paragraphObserverRef.current = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return
+          const idx = Number(entry.target.getAttribute('data-para-index'))
+          if (!Number.isInteger(idx)) return
+          ensureParagraphTranslations(getPrefetchIndices(idx))
+        })
+      }, {
+        root: null,
+        rootMargin: '180px 0px 180px 0px',
+        threshold: 0.05,
+      })
+    }
+
+    const observer = paragraphObserverRef.current
+    observer.disconnect()
+    paragraphRefs.current.forEach((el) => observer.observe(el))
+
+    const visibleIndices = []
+    paragraphRefs.current.forEach((el, idx) => {
+      const rect = el.getBoundingClientRect()
+      if (rect.bottom >= -80 && rect.top <= window.innerHeight + 80) {
+        visibleIndices.push(idx)
+      }
+    })
+    if (visibleIndices.length === 0) {
+      ensureParagraphTranslations(getPrefetchIndices(0))
+    } else {
+      const target = visibleIndices[Math.floor(visibleIndices.length / 2)]
+      ensureParagraphTranslations(getPrefetchIndices(target))
+    }
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [viewLanguage, contentParagraphs, id])
 
   const handleMouseDown = (wordIndex) => { mouseDownRef.current = true; hasDraggedRef.current = false; setDragStart(wordIndex); setDragEnd(wordIndex) }
   const handleMouseEnter = (wordIndex) => { if (mouseDownRef.current) { if (wordIndex !== stateRef.current.dragStart) hasDraggedRef.current = true; setDragEnd(wordIndex) } }
@@ -388,6 +714,7 @@ function ReadingView() {
     setFinishing(true)
     try {
       const { data } = await articlesAPI.finish(id, wordMeanings)
+      await articlesAPI.deleteProgress(id).catch(() => {})
       const report = data?.report
       navigate(report ? '/report/latest' : '/', {
         state: report ? { report, articleTitle: article?.title ?? '' } : undefined,
@@ -405,28 +732,100 @@ function ReadingView() {
     return found ? found.trim() : ''
   }
 
+  const handleGoTopOrResume = () => {
+    if (scrollTopY > 120) {
+      const snapshot = collectProgressSnapshot()
+      topReturnProgressRef.current = snapshot
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    const anchor = topReturnProgressRef.current || (
+      savedProgress.hasProgress
+        ? {
+          scroll_position: savedProgress.scrollPosition,
+          scroll_percentage: savedProgress.scrollPercentage,
+        }
+        : null
+    )
+    if (!anchor) return
+    const maxScroll = getMaxScrollY()
+    const target = (anchor.scroll_percentage || 0) > 0
+      ? ((anchor.scroll_percentage || 0) / 100) * maxScroll
+      : Math.max(0, anchor.scroll_position || 0)
+    window.scrollTo({ top: Math.min(maxScroll, target), behavior: 'smooth' })
+  }
+
+  const handleBackToEdit = async () => {
+    const snapshot = collectProgressSnapshot()
+    try {
+      await persistReadingProgress(true)
+    } catch {
+      // 进度保存失败时也允许先进入修改
+    }
+    navigate(`/import?edit=${id}&from_read=1&resume_pct=${encodeURIComponent(String(snapshot.scroll_percentage || 0))}`)
+  }
+
   if (loading) return <LoadingSpinner />
   if (!article) return <div className="flex items-center justify-center min-h-[300px] text-surface-400">文章不存在</div>
+
+  const handleToggleLanguage = async () => {
+    if (viewLanguage === 'zh') {
+      setViewLanguage('en')
+      return
+    }
+
+    // 先切到中文视图，正文由可视段落动态翻译，避免按钮看起来无响应
+    setViewLanguage('zh')
+
+    const hasSourceTitle = String(article?.title || '').trim().length > 0
+    const hasTranslatedTitle = translatedTitle.trim().length > 0 || !hasSourceTitle
+
+    if (hasTranslatedTitle) return
+
+    setTranslating(true)
+    try {
+      const { data } = await articlesAPI.translate(id, { titleOnly: true })
+      setTranslatedTitle(String(data?.translatedTitle || '').trim())
+    } catch (err) {
+      console.error('标题翻译失败:', err)
+    } finally {
+      setTranslating(false)
+    }
+  }
 
   const allUnknowns = [
     ...Array.from(clickedWords).map(w => ({ type: 'word', text: w })),
     ...phrases.map(p => ({ type: 'phrase', text: p.text })),
   ].sort((a, b) => a.text.localeCompare(b.text))
   const totalMarked = clickedWords.size + phrases.length
+  const displayTitle = viewLanguage === 'zh' && translatedTitle.trim() ? translatedTitle : article.title
+  const topToggleLabel = scrollTopY > 120 ? '回到首页' : '回阅读处'
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const spellPopupMaxWidth = Math.min(320, Math.max(220, viewportWidth - 16))
+  const spellPopupLeft = spellPopup
+    ? Math.max(8, Math.min(spellPopup.x, viewportWidth - spellPopupMaxWidth - 8))
+    : 8
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       {/* Toolbar */}
-      <div className="sticky top-14 z-40 bg-white/90 backdrop-blur-sm rounded-xl border border-surface-200/60 p-3 sm:p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div className="sticky top-14 z-40 bg-white/93 backdrop-blur-md rounded-2xl border border-surface-200/75 p-3.5 sm:p-5 mb-4 space-y-3 shadow-[0_8px_24px_rgba(23,34,32,0.06)]">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => navigate('/')} className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-surface-50 text-surface-500 hover:bg-surface-100 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
           </button>
-          <h2 className="font-semibold text-surface-800 text-[15px] truncate">{article.title}</h2>
+          <h2 className="font-semibold text-surface-800 text-[16px] truncate">{displayTitle}</h2>
           <DiffBadge level={article.difficulty_level} />
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button variant="secondary" size="sm" onClick={handleGoTopOrResume}>
+              {topToggleLabel}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleToggleLanguage} disabled={translating}>
+              {translating ? '翻译中...' : (viewLanguage === 'zh' ? '切换英文' : '切换中文')}
+            </Button>
             <Button variant={speechStatus === 'speaking' ? 'danger' : 'secondary'} size="sm" onClick={handleSpeechToggle}>
               {speechStatus === 'speaking' ? '暂停朗读' : speechStatus === 'paused' ? '继续朗读' : '开始朗读'}
             </Button>
@@ -437,48 +836,91 @@ function ReadingView() {
               {speedLabelMap[speechSpeed]}
             </Button>
           </div>
-          <span className="text-[13px] text-surface-500">
-            已标记 <span className="font-semibold text-red-500">{clickedWords.size}</span> 词
-            {phrases.length > 0 && <>, <span className="font-semibold text-emerald-500">{phrases.length}</span> 词组</>}
-          </span>
-          <Button variant="success" size="sm" onClick={handleFinishReading}>
-            {article.is_completed ? '再次完成' : '完成阅读'}
-          </Button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[13px] text-surface-500">
+              已标记 <span className="font-semibold text-red-500">{clickedWords.size}</span> 词
+              {phrases.length > 0 && <>, <span className="font-semibold text-orange-500">{phrases.length}</span> 词组</>}
+            </span>
+            <Button variant="success" size="sm" onClick={handleFinishReading}>
+              {article.is_completed ? '再次完成' : '完成阅读'}
+            </Button>
+            <Button
+              variant="success"
+              size="sm"
+              className="!bg-orange-500 hover:!bg-orange-600 active:!bg-orange-700"
+              onClick={handleBackToEdit}
+            >
+              返回修改
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Hint */}
-      <div className="flex items-center gap-3 flex-wrap px-3.5 py-2.5 bg-sky-50/80 border border-sky-200/50 rounded-lg text-[12px] text-sky-700 mb-4">
-        <span><span className="font-semibold text-red-500">单击</span> 标记生词（红色）</span>
-        <span className="text-sky-300">|</span>
-        <span><span className="font-semibold text-emerald-500">拖动</span> 选择词组（绿色），点击绿色词可移除</span>
-      </div>
+      {viewLanguage === 'en' ? (
+        <div className="flex items-center gap-3 flex-wrap px-3.5 py-2.5 bg-sky-50/80 border border-sky-200/50 rounded-xl text-[12px] text-sky-700 mb-4">
+          <span><span className="font-semibold text-red-500">单击</span> 标记生词（红色）</span>
+          <span className="text-sky-300">|</span>
+          <span><span className="font-semibold text-orange-500">拖动</span> 选择词组（橙色），点击橙色词可移除</span>
+        </div>
+      ) : (
+        <div className="px-3.5 py-2.5 bg-amber-50/80 border border-amber-200/50 rounded-xl text-[12px] text-amber-700 mb-4">
+          当前为中文临时翻译视图（离开阅读页后不保留）
+        </div>
+      )}
 
       {/* Article Content */}
-      <div className="reading-content bg-white rounded-xl border border-surface-200/80 p-6 sm:p-8 text-lg leading-[2.2] text-surface-700 min-h-[300px] select-none" onDragStart={e => e.preventDefault()}>
-        {tokens.map((token, i) => {
-          if (token.type === 'word') {
-            const cls = getWordClass(token.index, token.lower)
-            return (
-              <span key={i} className={`readable-word ${cls}`}
-                data-word-index={token.index}
-                onMouseDown={(e) => { e.preventDefault(); handleMouseDown(token.index) }}
-                onMouseEnter={() => handleMouseEnter(token.index)}>
-                {token.text}
-              </span>
-            )
-          } else {
-            const parts = token.text.split('\n')
-            return parts.map((part, j) => <span key={`${i}-${j}`}>{j > 0 && <br />}{part}</span>)
-          }
-        })}
+      <div className="reading-content bg-white/94 rounded-2xl border border-surface-200/85 p-6 sm:p-8 text-[1.06rem] leading-[2.15] text-surface-700 min-h-[300px] select-none shadow-[0_8px_24px_rgba(23,34,32,0.05)]" onDragStart={e => e.preventDefault()}>
+        {viewLanguage === 'zh' ? (
+          <div className="reading-zh-content">
+            {contentParagraphs.length > 0 ? (
+              contentParagraphs.map((paragraph, idx) => {
+                const translated = translatedParagraphMap[idx]
+                const pending = !translated
+                const currentlyLoading = translatingParagraphs.has(idx)
+                return (
+                  <p
+                    key={`zh-p-${idx}`}
+                    data-para-index={idx}
+                    ref={setZhParagraphRef(idx)}
+                    className={`reading-zh-paragraph ${pending ? 'reading-zh-pending' : ''}`}
+                  >
+                    {translated || paragraph}
+                    {currentlyLoading && (
+                      <span className="reading-zh-loading-tag">翻译中</span>
+                    )}
+                  </p>
+                )
+              })
+            ) : (
+              <p className="reading-zh-paragraph reading-zh-status">暂无可用翻译</p>
+            )}
+          </div>
+        ) : (
+          tokens.map((token, i) => {
+            if (token.type === 'word') {
+              const cls = getWordClass(token.index, token.lower)
+              return (
+                <span key={i} className={`readable-word ${cls}`}
+                  data-word-index={token.index}
+                  onMouseDown={(e) => { e.preventDefault(); handleMouseDown(token.index) }}
+                  onMouseEnter={() => handleMouseEnter(token.index)}>
+                  {token.text}
+                </span>
+              )
+            } else {
+              const parts = token.text.split('\n')
+              return parts.map((part, j) => <span key={`${i}-${j}`}>{j > 0 && <br />}{part}</span>)
+            }
+          })
+        )}
       </div>
 
       {/* 拼写建议弹窗 */}
       {spellPopup && (
         <div
           className="fixed z-50 bg-white rounded-xl shadow-xl border border-surface-200 p-3 animate-scale-in"
-          style={{ left: Math.min(spellPopup.x, window.innerWidth - 280), top: spellPopup.y, minWidth: 220, maxWidth: 320 }}
+          style={{ left: spellPopupLeft, top: spellPopup.y, width: spellPopupMaxWidth, maxWidth: spellPopupMaxWidth }}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] text-amber-600 font-semibold flex items-center gap-1">
@@ -531,7 +973,7 @@ function ReadingView() {
           <>
             <div className="px-5 py-2.5 text-[13px] text-surface-500 border-b border-surface-100 bg-surface-50/50">
               您标记了 <span className="font-semibold text-red-500">{clickedWords.size}</span> 个生词、
-              <span className="font-semibold text-emerald-500">{phrases.length}</span> 个词组。可以填写释义（选填）：
+              <span className="font-semibold text-orange-500">{phrases.length}</span> 个词组。可以填写释义（选填）：
             </div>
             <ModalBody className="max-h-[50vh]">
               <div className="space-y-3.5">
@@ -540,8 +982,8 @@ function ReadingView() {
                   return (
                     <div key={item.text} className="space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-bold text-[15px] ${item.type === 'phrase' ? 'text-emerald-600' : 'text-primary-600'}`}>{item.text}</span>
-                        {item.type === 'phrase' && <span className="text-[10px] font-medium bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-md">词组</span>}
+                        <span className={`font-bold text-[15px] ${item.type === 'phrase' ? 'text-orange-600' : 'text-primary-600'}`}>{item.text}</span>
+                        {item.type === 'phrase' && <span className="text-[10px] font-medium bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-md">词组</span>}
                         <span className="text-[11px] text-surface-400 italic truncate max-w-xs">{ctx.substring(0, 80)}{ctx.length > 80 ? '...' : ''}</span>
                       </div>
                       <input type="text" placeholder="输入中文释义（选填）" value={wordMeanings[item.text]?.meaning || ''} onChange={(e) => updateMeaning(item.text, 'meaning', e.target.value)}

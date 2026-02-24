@@ -16,13 +16,13 @@ export class ErrorBoundary extends Component {
           alignItems: 'center',
           justifyContent: 'center',
           padding: '2rem',
-          fontFamily: 'system-ui, sans-serif',
-          background: '#f8fafc',
-          color: '#1e293b',
+          fontFamily: '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif',
+          background: '#f7f9f8',
+          color: '#273533',
         }}>
           <div style={{ maxWidth: 480, textAlign: 'center' }}>
             <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>页面出错了</h1>
-            <p style={{ color: '#64748b', marginBottom: '1rem' }}>
+            <p style={{ color: '#647a76', marginBottom: '1rem' }}>
               {this.state.error?.message || '未知错误'}
             </p>
             <button
@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component {
               onClick={() => window.location.reload()}
               style={{
                 padding: '0.5rem 1rem',
-                background: '#6366f1',
+                background: '#158271',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',

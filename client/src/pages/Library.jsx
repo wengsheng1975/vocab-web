@@ -20,7 +20,7 @@ function Library() {
   const [renamingFolderId, setRenamingFolderId] = useState(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
-  const [activeFolder, setActiveFolder] = useState('all')
+  const [activeFolder, setActiveFolder] = useState('uncategorized')
   const [draggingArticleId, setDraggingArticleId] = useState(null)
   const [dragOverTarget, setDragOverTarget] = useState(null)
 
@@ -59,7 +59,6 @@ function Library() {
   }, [suggestions])
 
   const visibleArticles = useMemo(() => {
-    if (activeFolder === 'all') return articles
     if (activeFolder === 'uncategorized') return articles.filter((a) => !a.folder_id)
     return articles.filter((a) => Number(a.folder_id) === Number(activeFolder))
   }, [articles, activeFolder])
@@ -136,7 +135,7 @@ function Library() {
     try {
       await articlesAPI.deleteFolder(folderId)
       if (Number(activeFolder) === Number(folderId)) {
-        setActiveFolder('all')
+        setActiveFolder('uncategorized')
       }
       await loadData()
     } catch (err) {
@@ -239,17 +238,20 @@ function Library() {
   if (loading) return <LoadingSpinner />
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto space-y-5">
       <PageHeader title="文库">
-        <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium">
-          共 {articles.length} 篇文章
-          {articles.filter((a) => !a.is_completed).length > 0 && `（${articles.filter((a) => !a.is_completed).length} 篇未读完）`}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="toc-chip">内容目录</span>
+          <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium">
+            共 {articles.length} 篇文章
+            {articles.filter((a) => !a.is_completed).length > 0 && `（${articles.filter((a) => !a.is_completed).length} 篇未读完）`}
+          </span>
+        </div>
       </PageHeader>
 
       {suggestions.length > 0 && (
         <AnimatedContent distance={15} duration={0.4}>
-          <div className="rounded-xl bg-amber-50/80 border border-amber-200/50 p-4 mb-5 flex items-start gap-3">
+          <div className="rounded-2xl bg-amber-50/80 border border-amber-200/50 p-4 mb-5 flex items-start gap-3">
             <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
             </svg>
@@ -261,7 +263,7 @@ function Library() {
         </AnimatedContent>
       )}
 
-      <div className="bg-white rounded-xl border border-surface-200/80 p-4 mb-4">
+      <div className="bg-white/92 rounded-2xl border border-surface-200/85 p-5 mb-4 shadow-[0_8px_24px_rgba(23,34,32,0.05)]">
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="text-[14px] font-semibold text-surface-800">自定义文件夹（可拖拽文章分类，双击名称可改名）</h3>
           {moving && <span className="text-[12px] text-primary-600 font-medium">移动中...</span>}
@@ -283,20 +285,12 @@ function Library() {
         </form>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveFolder('all')}
-            className={`px-3 py-2 rounded-lg border text-[12px] font-medium transition-colors ${activeFolder === 'all' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-surface-50 border-surface-200 text-surface-600 hover:bg-surface-100'}`}
-          >
-            全部 ({articles.length})
-          </button>
-
           <div
             onClick={() => setActiveFolder('uncategorized')}
             onDragOver={(e) => { e.preventDefault(); setDragOverTarget('uncategorized') }}
             onDragLeave={() => setDragOverTarget(null)}
             onDrop={(e) => onFolderDrop(e, null)}
-            className={`px-3 py-2 rounded-lg border text-[12px] font-medium transition-colors cursor-pointer ${activeFolder === 'uncategorized' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-surface-50 border-surface-200 text-surface-600 hover:bg-surface-100'} ${dragOverTarget === 'uncategorized' ? '!bg-emerald-50 !border-emerald-300 !text-emerald-700' : ''}`}
+            className={`px-3 py-2 rounded-xl border text-[12px] font-medium transition-colors cursor-pointer ${activeFolder === 'uncategorized' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-surface-50 border-surface-200 text-surface-600 hover:bg-surface-100'} ${dragOverTarget === 'uncategorized' ? '!bg-emerald-50 !border-emerald-300 !text-emerald-700' : ''}`}
             title="把文章拖到这里可移回未分类"
           >
             未分类 ({uncategorizedCount})
@@ -309,7 +303,7 @@ function Library() {
               onDragOver={(e) => { e.preventDefault(); setDragOverTarget(folder.id) }}
               onDragLeave={() => setDragOverTarget(null)}
               onDrop={(e) => onFolderDrop(e, folder.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[12px] font-medium transition-colors cursor-pointer ${Number(activeFolder) === Number(folder.id) ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-surface-50 border-surface-200 text-surface-600 hover:bg-surface-100'} ${Number(dragOverTarget) === Number(folder.id) ? '!bg-emerald-50 !border-emerald-300 !text-emerald-700' : ''}`}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[12px] font-medium transition-colors cursor-pointer ${Number(activeFolder) === Number(folder.id) ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-surface-50 border-surface-200 text-surface-600 hover:bg-surface-100'} ${Number(dragOverTarget) === Number(folder.id) ? '!bg-emerald-50 !border-emerald-300 !text-emerald-700' : ''}`}
               title="把文章拖到这里分类"
             >
               <span
@@ -376,7 +370,7 @@ function Library() {
         </EmptyState>
       ) : visibleArticles.length === 0 ? (
         <EmptyState title="该分类暂无文章" description="把右侧文章卡片拖到对应文件夹即可归类。">
-          <Button size="sm" variant="secondary" onClick={() => setActiveFolder('all')}>查看全部文章</Button>
+          <Button size="sm" variant="secondary" onClick={() => setActiveFolder('uncategorized')}>查看未分类文章</Button>
         </EmptyState>
       ) : (
         <AnimatedContent stagger={0.05} distance={15} duration={0.4}>
@@ -391,7 +385,7 @@ function Library() {
                   draggable
                   onDragStart={(e) => onArticleDragStart(e, article.id, article.title)}
                   onDragEnd={onArticleDragEnd}
-                  className={`bg-white rounded-xl border border-surface-200/80 transition-shadow duration-200 hover:shadow-sm overflow-hidden cursor-grab active:cursor-grabbing ${draggingArticleId === article.id ? 'opacity-70' : ''} ${suggestion ? 'border-l-[3px] border-l-amber-400' : ''}`}
+                  className={`bg-white/92 rounded-2xl border border-surface-200/85 transition-all duration-200 hover:shadow-[0_12px_24px_rgba(17,63,57,0.11)] overflow-hidden cursor-grab active:cursor-grabbing ${draggingArticleId === article.id ? 'opacity-70' : ''} ${suggestion ? 'border-l-[3px] border-l-amber-400' : ''}`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start p-4 gap-3">
                     <div className="flex-1 min-w-0">

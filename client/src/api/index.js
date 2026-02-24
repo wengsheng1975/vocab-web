@@ -62,6 +62,8 @@ export const articlesAPI = {
   moveToFolder: (articleId, folderId) => api.post(`/articles/${articleId}/move-folder`, { folderId }),
   getAll: () => api.get('/articles'),
   get: (id) => api.get(`/articles/${id}`),
+  translate: (id, data = {}) => api.post(`/articles/${id}/translate`, data),
+  translateSnippets: (id, data) => api.post(`/articles/${id}/translate-snippets`, data),
   clickWord: (articleId, word, wordIndex) => api.post(`/articles/${articleId}/click-word`, { word, wordIndex }),
   unclickWord: (articleId, word) => api.post(`/articles/${articleId}/unclick-word`, { word }),
   clickPhrase: (articleId, phrase, indices) => api.post(`/articles/${articleId}/click-phrase`, { phrase, indices }),

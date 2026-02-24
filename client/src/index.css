@@ -12,39 +12,39 @@
    ======================================== */
 
 @theme {
-  /* Primary — Indigo */
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
+  /* Primary — Teal */
+  --color-primary-50: #eefaf8;
+  --color-primary-100: #d7f3ee;
+  --color-primary-200: #afe8de;
+  --color-primary-300: #78d5c5;
+  --color-primary-400: #43b9a8;
+  --color-primary-500: #259f8f;
+  --color-primary-600: #158271;
+  --color-primary-700: #13675b;
+  --color-primary-800: #124f47;
+  --color-primary-900: #103f39;
 
-  /* Accent — Cyan */
-  --color-accent-50: #ecfeff;
-  --color-accent-100: #cffafe;
-  --color-accent-200: #a5f3fc;
-  --color-accent-300: #67e8f9;
-  --color-accent-400: #22d3ee;
-  --color-accent-500: #06b6d4;
-  --color-accent-600: #0891b2;
-  --color-accent-700: #0e7490;
+  /* Accent — Orange */
+  --color-accent-50: #fff7ed;
+  --color-accent-100: #ffedd5;
+  --color-accent-200: #fed7aa;
+  --color-accent-300: #fdba74;
+  --color-accent-400: #fb923c;
+  --color-accent-500: #f97316;
+  --color-accent-600: #ea580c;
+  --color-accent-700: #c2410c;
 
   /* Surface */
-  --color-surface-50: #f8fafc;
-  --color-surface-100: #f1f5f9;
-  --color-surface-200: #e2e8f0;
-  --color-surface-300: #cbd5e1;
-  --color-surface-400: #94a3b8;
-  --color-surface-500: #64748b;
-  --color-surface-600: #475569;
-  --color-surface-700: #334155;
-  --color-surface-800: #1e293b;
-  --color-surface-900: #0f172a;
+  --color-surface-50: #f7f9f8;
+  --color-surface-100: #edf2f1;
+  --color-surface-200: #dbe5e3;
+  --color-surface-300: #becdca;
+  --color-surface-400: #8da4a0;
+  --color-surface-500: #647a76;
+  --color-surface-600: #4c605d;
+  --color-surface-700: #394a47;
+  --color-surface-800: #273533;
+  --color-surface-900: #172220;
 
   /* Animations */
   --animate-fade-in: fade-in 0.4s ease-out;
@@ -54,7 +54,7 @@
   --animate-shimmer: shimmer 2s infinite;
 
   /* Font family */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-sans: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', sans-serif;
 }
 
 /* ========== Keyframes ========== */
@@ -101,14 +101,43 @@
     box-sizing: border-box;
   }
 
+  :root {
+    --phi: 1.618;
+  }
+
   html {
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-size: 16px;
   }
 
   body {
-    @apply bg-surface-50 text-surface-800 leading-relaxed font-sans;
+    @apply bg-surface-50 text-surface-800 font-sans;
+    line-height: 1.62;
+    letter-spacing: 0.006em;
+  }
+
+  h1, h2, h3 {
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    color: #172220;
+  }
+
+  h1 {
+    font-size: clamp(1.95rem, 1.35rem + 1.7vw, 3.16rem);
+  }
+
+  h2 {
+    font-size: clamp(1.36rem, 1.06rem + 1vw, 1.95rem);
+  }
+
+  h3 {
+    font-size: clamp(1.16rem, 1rem + 0.62vw, 1.38rem);
+  }
+
+  p {
+    line-height: 1.62;
   }
 
   a {
@@ -133,6 +162,44 @@
 
 /* ========== Utility classes for difficulty/level badges ========== */
 @layer components {
+  .app-shell {
+    background-image:
+      radial-gradient(1200px 520px at 8% -20%, rgba(21, 130, 113, 0.14), transparent 52%),
+      radial-gradient(900px 420px at 96% 0%, rgba(249, 115, 22, 0.11), transparent 50%),
+      linear-gradient(180deg, #f7f9f8 0%, #f4f8f7 48%, #f7f9f8 100%);
+  }
+
+  .toc-chip {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide uppercase;
+    color: #13675b;
+    background: rgba(21, 130, 113, 0.12);
+    border: 1px solid rgba(21, 130, 113, 0.2);
+  }
+
+  .toc-pill {
+    @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[13px] font-medium transition-all duration-200;
+    border-color: #dbe5e3;
+    color: #4c605d;
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .toc-pill:hover {
+    border-color: #9bcfc6;
+    color: #13675b;
+    background: #ffffff;
+  }
+
+  .toc-pill-active {
+    border-color: #43b9a8;
+    color: #124f47;
+    background: #eefaf8;
+    box-shadow: 0 2px 8px rgba(19, 103, 91, 0.12);
+  }
+
+  .hero-panel {
+    background: linear-gradient(150deg, rgba(16, 63, 57, 0.94) 0%, rgba(19, 103, 91, 0.92) 50%, rgba(194, 65, 12, 0.76) 100%);
+  }
+
   /* Reading word states */
   .readable-word {
     @apply cursor-pointer py-0.5 px-0.5 rounded-sm transition-all duration-150;
@@ -145,11 +212,11 @@
     box-shadow: inset 0 -2px 0 #ef4444;
   }
   .readable-word.word-phrase {
-    @apply text-emerald-600 bg-emerald-50;
-    box-shadow: inset 0 -2px 0 #10b981;
+    @apply text-orange-600 bg-orange-50;
+    box-shadow: inset 0 -2px 0 #f97316;
   }
   .readable-word.word-phrase:hover {
-    @apply bg-emerald-100;
+    @apply bg-orange-100;
   }
   .readable-word.word-drag-preview {
     @apply bg-primary-200/40 border-b-2 border-dashed border-primary-500 text-primary-700;
@@ -208,5 +275,44 @@
   .reading-content {
     text-align: justify;
     text-justify: inter-word;
+  }
+
+  .reading-zh-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: justify;
+    text-justify: inter-ideograph;
+    line-height: 2.05;
+  }
+
+  .reading-zh-paragraph {
+    text-indent: 2em;
+    margin: 0 0 0.9em 0;
+  }
+
+  .reading-zh-paragraph:last-child {
+    margin-bottom: 0;
+  }
+
+  .reading-zh-pending {
+    color: #334155;
+  }
+
+  .reading-zh-loading-tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #92400e;
+    background: #fef3c7;
+    vertical-align: text-top;
+    text-indent: 0;
+  }
+
+  .reading-zh-status {
+    text-indent: 0;
+    color: #64748b;
   }
 }
