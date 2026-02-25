@@ -10,11 +10,14 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [standalone, setStandalone] = useState(false);
 
-  useEffect(() => {
-    initAuth();
+  const login = useCallback((userData, tokenStr) => {
+    setUser(userData);
+    setToken(tokenStr);
+    localStorage.setItem('token', tokenStr);
+    localStorage.setItem('user', JSON.stringify(userData));
   }, []);
 
-  const initAuth = async () => {
+  const initAuth = useCallback(async () => {
     // 先检查本地缓存
     const savedToken = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
@@ -57,14 +60,11 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [login]);
 
-  const login = (userData, tokenStr) => {
-    setUser(userData);
-    setToken(tokenStr);
-    localStorage.setItem('token', tokenStr);
-    localStorage.setItem('user', JSON.stringify(userData));
-  };
+  useEffect(() => {
+    initAuth();
+  }, [initAuth]);
 
   const logout = useCallback(async () => {
     // 先通知服务端使 token 失效（忽略失败，确保客户端总能登出）

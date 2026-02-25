@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { vocabAPI } from '../api'
 import { FreqBadge, StatusBadge } from '../components/ui/Badge'
 import Button from '../components/ui/Button'
@@ -39,16 +39,16 @@ function Vocabulary() {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
   }, [search])
 
-  useEffect(() => { loadWords() }, [debouncedSearch, status, sort, order, page])
-
-  const loadWords = async () => {
+  const loadWords = useCallback(async () => {
     setLoading(true)
     try {
       const { data } = await vocabAPI.getAll({ status, sort, order, search: debouncedSearch, page, limit })
       setWords(data.words); setTotal(data.total); setStats(data.stats); setTargetLevel(data.targetLevel || 'none')
     } catch (err) { console.error('加载生词失败:', err) }
     finally { setLoading(false) }
-  }
+  }, [debouncedSearch, order, page, sort, status])
+
+  useEffect(() => { loadWords() }, [loadWords])
 
   const handleMaster = async (id) => { try { await vocabAPI.master(id); loadWords() } catch { alert('操作失败') } }
   const handleRestore = async (id) => { try { await vocabAPI.restore(id); loadWords() } catch { alert('操作失败') } }
@@ -105,9 +105,7 @@ function Vocabulary() {
     if (!confirm('确定删除这条释义？')) return
     setDeleteMeaningLoading(meaningId)
     try {
-      console.log('删除释义:', { wordId, meaningId })
-      const response = await vocabAPI.deleteMeaning(wordId, meaningId)
-      console.log('删除成功:', response.data)
+      await vocabAPI.deleteMeaning(wordId, meaningId)
       if (editingMeaningKey === `${wordId}-${meaningId}`) cancelEditMeaning()
       loadWords()
     } catch (err) {
@@ -119,13 +117,51 @@ function Vocabulary() {
     }
   }
 
+  const renderAddMeaningForm = (wordId) => (
+    <div className="space-y-1.5 p-2 bg-surface-50 rounded-lg">
+      <input
+        type="text"
+        value={newMeaning}
+        onChange={(e) => setNewMeaning(e.target.value)}
+        placeholder="释义"
+        className="w-full px-2.5 py-1.5 text-[13px] border border-surface-200 rounded outline-none focus:border-primary-500"
+        maxLength={500}
+      />
+      <input
+        type="text"
+        value={newContext}
+        onChange={(e) => setNewContext(e.target.value)}
+        placeholder="例句（选填）"
+        className="w-full px-2.5 py-1.5 text-[12px] border border-surface-200 rounded outline-none focus:border-primary-500"
+        maxLength={1000}
+      />
+      <div className="flex gap-1.5 mt-1">
+        <button
+          type="button"
+          disabled={!newMeaning.trim() || addMeaningLoading}
+          onClick={() => handleAddMeaning(wordId)}
+          className="text-[11px] text-primary-600 hover:underline disabled:opacity-50"
+        >
+          {addMeaningLoading ? '保存中...' : '保存'}
+        </button>
+        <button
+          type="button"
+          disabled={addMeaningLoading}
+          onClick={() => { setAddingMeaningId(null); setNewMeaning(''); setNewContext('') }}
+          className="text-[11px] text-surface-500 hover:underline"
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  )
+
   const totalPages = Math.ceil(total / limit)
 
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader title="生词本">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="toc-chip">词汇目录</span>
           <StatusBadge text={`活跃 ${stats.activeCount || 0}`} color="primary" />
           <StatusBadge text={`高频 ${stats.highFreqCount || 0}`} color="danger" />
           <StatusBadge text={`已掌握 ${stats.masteredCount || 0}`} color="success" />
@@ -203,6 +239,11 @@ function Vocabulary() {
                             超纲
                           </span>
                         )}
+                        {word.dictLevel && !word.outOfScope && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200 leading-none uppercase">
+                            {word.dictLevel}
+                          </span>
+                        )}
                         {word.cetLevel && word.cetLevel !== 'beyond' && (
                           <span className="text-[10px] text-surface-400 font-medium uppercase">{word.cetLevel === 'cet4' ? 'CET4' : 'CET6'}</span>
                         )}
@@ -229,7 +270,7 @@ function Vocabulary() {
                           <div>
                             <div className="flex items-center gap-2 mb-1.5">
                               <h4 className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">释义</h4>
-                              {addingMeaningId !== word.id && (
+                              {word.outOfScope && addingMeaningId !== word.id && (
                                 <button type="button" onClick={() => { setAddingMeaningId(word.id); setNewMeaning(''); setNewContext('') }} className="text-[11px] text-primary-500 hover:text-primary-600">
                                   ＋ 添加
                                 </button>
@@ -255,12 +296,12 @@ function Vocabulary() {
                                         {m.context_sentence && <div className="text-[12px] text-surface-500 italic mt-0.5">"{m.context_sentence}"</div>}
                                         {m.article_title && <div className="text-[11px] text-surface-400 mt-0.5">来源：{m.article_title}</div>}
                                         <div className="flex gap-2 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                          {m.id ? (
+                                          {word.outOfScope && m.id ? (
                                             <button type="button" onClick={(e) => { e.stopPropagation(); startEditMeaning(word.id, m) }} className="text-[11px] text-primary-500 hover:text-primary-600">编辑</button>
                                           ) : (
                                             <span className="text-[11px] text-surface-400">词典释义（只读）</span>
                                           )}
-                                          {m.id && (
+                                          {word.outOfScope && m.id && (
                                             <button type="button" onClick={(e) => handleDeleteMeaning(word.id, m.id, e)} disabled={deleteMeaningLoading === m.id} className="text-[11px] text-red-500 hover:text-red-600 disabled:opacity-50">{deleteMeaningLoading === m.id ? '删除中...' : '删除'}</button>
                                           )}
                                         </div>
@@ -269,15 +310,8 @@ function Vocabulary() {
                                   </div>
                                 )
                               })}
-                              {addingMeaningId === word.id && (
-                                <div className="space-y-1.5 p-2 bg-surface-50 rounded-lg">
-                                  <input type="text" value={newMeaning} onChange={(e) => setNewMeaning(e.target.value)} placeholder="释义" className="w-full px-2.5 py-1.5 text-[13px] border border-surface-200 rounded outline-none focus:border-primary-500" maxLength={500} />
-                                  <input type="text" value={newContext} onChange={(e) => setNewContext(e.target.value)} placeholder="例句（选填）" className="w-full px-2.5 py-1.5 text-[12px] border border-surface-200 rounded outline-none focus:border-primary-500" maxLength={1000} />
-                                  <div className="flex gap-1.5 mt-1">
-                                    <button type="button" disabled={!newMeaning.trim() || addMeaningLoading} onClick={() => handleAddMeaning(word.id)} className="text-[11px] text-primary-600 hover:underline disabled:opacity-50">{addMeaningLoading ? '保存中...' : '保存'}</button>
-                                    <button type="button" disabled={addMeaningLoading} onClick={() => { setAddingMeaningId(null); setNewMeaning(''); setNewContext('') }} className="text-[11px] text-surface-500 hover:underline">取消</button>
-                                  </div>
-                                </div>
+                              {word.outOfScope && addingMeaningId === word.id && (
+                                renderAddMeaningForm(word.id)
                               )}
                             </div>
                           </div>
@@ -285,23 +319,16 @@ function Vocabulary() {
                           <div>
                             <div className="flex items-center gap-2 mb-1.5">
                               <h4 className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">释义</h4>
-                              {addingMeaningId !== word.id && (
+                              {word.outOfScope && addingMeaningId !== word.id && (
                                 <button type="button" onClick={() => { setAddingMeaningId(word.id); setNewMeaning(''); setNewContext('') }} className="text-[11px] text-primary-500 hover:text-primary-600">
                                   ＋ 添加
                                 </button>
                               )}
                             </div>
-                            {addingMeaningId === word.id ? (
-                              <div className="space-y-1.5 p-2 bg-surface-50 rounded-lg">
-                                <input type="text" value={newMeaning} onChange={(e) => setNewMeaning(e.target.value)} placeholder="释义" className="w-full px-2.5 py-1.5 text-[13px] border border-surface-200 rounded outline-none focus:border-primary-500" maxLength={500} />
-                                <input type="text" value={newContext} onChange={(e) => setNewContext(e.target.value)} placeholder="例句（选填）" className="w-full px-2.5 py-1.5 text-[12px] border border-surface-200 rounded outline-none focus:border-primary-500" maxLength={1000} />
-                                <div className="flex gap-1.5 mt-1">
-                                  <button type="button" disabled={!newMeaning.trim() || addMeaningLoading} onClick={() => handleAddMeaning(word.id)} className="text-[11px] text-primary-600 hover:underline disabled:opacity-50">{addMeaningLoading ? '保存中...' : '保存'}</button>
-                                  <button type="button" disabled={addMeaningLoading} onClick={() => { setAddingMeaningId(null); setNewMeaning(''); setNewContext('') }} className="text-[11px] text-surface-500 hover:underline">取消</button>
-                                </div>
-                              </div>
+                            {word.outOfScope && addingMeaningId === word.id ? (
+                              renderAddMeaningForm(word.id)
                             ) : (
-                              <p className="text-[12px] text-surface-400">暂无释义</p>
+                              <p className="text-[12px] text-surface-400">{word.outOfScope ? '暂无释义' : '该词为纲内词，释义由词库提供'}</p>
                             )}
                           </div>
                         )}

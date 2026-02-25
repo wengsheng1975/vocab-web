@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { articlesAPI } from '../api'
 import Button from '../components/ui/Button'
@@ -304,12 +304,12 @@ function ReadingView() {
     }
   }
 
-  function getMaxScrollY() {
+  const getMaxScrollY = useCallback(() => {
     const doc = document.documentElement
     return Math.max(0, doc.scrollHeight - window.innerHeight)
-  }
+  }, [])
 
-  function getNearestVisibleWordIndex() {
+  const getNearestVisibleWordIndex = useCallback(() => {
     const els = document.querySelectorAll('[data-word-index]')
     const threshold = 120
     for (const el of els) {
@@ -320,9 +320,9 @@ function ReadingView() {
       }
     }
     return 0
-  }
+  }, [])
 
-  function collectProgressSnapshot() {
+  const collectProgressSnapshot = useCallback(() => {
     const scrollPosition = Math.max(0, window.scrollY || 0)
     const maxScroll = getMaxScrollY()
     const scrollPercentage = maxScroll > 0 ? (scrollPosition / maxScroll) * 100 : 0
@@ -332,9 +332,9 @@ function ReadingView() {
       scroll_percentage: Math.round(Math.max(0, Math.min(100, scrollPercentage)) * 100) / 100,
       last_visible_word_index: lastVisibleWordIndex,
     }
-  }
+  }, [getMaxScrollY, getNearestVisibleWordIndex])
 
-  const persistReadingProgress = async (force = false) => {
+  const persistReadingProgress = useCallback(async (force = false) => {
     if (!article || saveInFlightRef.current) return
     const next = collectProgressSnapshot()
     const prev = lastSavedProgressRef.current
@@ -359,29 +359,7 @@ function ReadingView() {
     } finally {
       saveInFlightRef.current = false
     }
-  }
-
-  useEffect(() => {
-    stopSpeech(true, true)
-    setViewLanguage('en')
-    setTranslatedTitle('')
-    setTranslatedParagraphMap({})
-    setTranslatingParagraphs(new Set())
-    setTranslating(false)
-    setSavedProgress({ scrollPosition: 0, scrollPercentage: 0, lastVisibleWordIndex: 0, hasProgress: false })
-    setScrollTopY(0)
-    restoreDoneRef.current = false
-    lastSavedProgressRef.current = { scroll_position: -1, scroll_percentage: -1, last_visible_word_index: -1 }
-    topReturnProgressRef.current = null
-    translatedParagraphMapRef.current = {}
-    translatingParagraphsRef.current = new Set()
-    paragraphRefs.current = new Map()
-    if (paragraphObserverRef.current) {
-      paragraphObserverRef.current.disconnect()
-      paragraphObserverRef.current = null
-    }
-    loadArticle()
-  }, [id])
+  }, [article, collectProgressSnapshot, id])
 
   useEffect(() => {
     const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
@@ -395,7 +373,7 @@ function ReadingView() {
     }
   }, [])
 
-  const loadArticle = async () => {
+  const loadArticle = useCallback(async () => {
     try {
       const [articleRes, progressRes] = await Promise.all([
         articlesAPI.get(id),
@@ -436,7 +414,29 @@ function ReadingView() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
+
+  useEffect(() => {
+    stopSpeech(true, true)
+    setViewLanguage('en')
+    setTranslatedTitle('')
+    setTranslatedParagraphMap({})
+    setTranslatingParagraphs(new Set())
+    setTranslating(false)
+    setSavedProgress({ scrollPosition: 0, scrollPercentage: 0, lastVisibleWordIndex: 0, hasProgress: false })
+    setScrollTopY(0)
+    restoreDoneRef.current = false
+    lastSavedProgressRef.current = { scroll_position: -1, scroll_percentage: -1, last_visible_word_index: -1 }
+    topReturnProgressRef.current = null
+    translatedParagraphMapRef.current = {}
+    translatingParagraphsRef.current = new Set()
+    paragraphRefs.current = new Map()
+    if (paragraphObserverRef.current) {
+      paragraphObserverRef.current.disconnect()
+      paragraphObserverRef.current = null
+    }
+    loadArticle()
+  }, [id, loadArticle])
 
   useEffect(() => {
     if (loading || !article || restoreDoneRef.current) return
@@ -467,7 +467,7 @@ function ReadingView() {
       restore()
       setTimeout(restore, 60)
     })
-  }, [loading, article, savedProgress, location.search])
+  }, [loading, article, savedProgress, location.search, getMaxScrollY])
 
   useEffect(() => {
     if (!article) return undefined
@@ -505,7 +505,7 @@ function ReadingView() {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       persistReadingProgress(true)
     }
-  }, [article, id])
+  }, [article, persistReadingProgress])
 
   const phraseIndexMap = useMemo(() => {
     const map = new Map()
@@ -522,7 +522,7 @@ function ReadingView() {
 
   const contentParagraphs = useMemo(() => splitParagraphs(article?.content || ''), [article?.content])
 
-  const ensureParagraphTranslations = async (indices = []) => {
+  const ensureParagraphTranslations = useCallback(async (indices = []) => {
     if (!contentParagraphs.length) return
     const uniqueIndices = [...new Set(indices)]
       .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < contentParagraphs.length)
@@ -556,16 +556,16 @@ function ReadingView() {
       pending.forEach((idx) => translatingParagraphsRef.current.delete(idx))
       setTranslatingParagraphs(new Set(translatingParagraphsRef.current))
     }
-  }
+  }, [contentParagraphs, id])
 
-  const getPrefetchIndices = (centerIndex) => {
+  const getPrefetchIndices = useCallback((centerIndex) => {
     const result = []
     for (let offset = -2; offset <= 2; offset += 1) {
       const idx = centerIndex + offset
       if (idx >= 0 && idx < contentParagraphs.length) result.push(idx)
     }
     return result
-  }
+  }, [contentParagraphs.length])
 
   const setZhParagraphRef = (idx) => (el) => {
     const map = paragraphRefs.current
@@ -612,24 +612,27 @@ function ReadingView() {
     return () => {
       observer.disconnect()
     }
-  }, [viewLanguage, contentParagraphs, id])
+  }, [viewLanguage, contentParagraphs, ensureParagraphTranslations, getPrefetchIndices])
 
   const handleMouseDown = (wordIndex) => { mouseDownRef.current = true; hasDraggedRef.current = false; setDragStart(wordIndex); setDragEnd(wordIndex) }
   const handleMouseEnter = (wordIndex) => { if (mouseDownRef.current) { if (wordIndex !== stateRef.current.dragStart) hasDraggedRef.current = true; setDragEnd(wordIndex) } }
 
-  useEffect(() => {
-    const handleMouseUp = () => {
-      if (!mouseDownRef.current) return
-      mouseDownRef.current = false
-      const { dragStart: ds, dragEnd: de } = stateRef.current
-      if (ds !== null && de !== null) { if (!hasDraggedRef.current) handleSingleClick(ds); else createPhrase(ds, de) }
-      setDragStart(null); setDragEnd(null)
-    }
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => document.removeEventListener('mouseup', handleMouseUp)
-  }, [])
+  const removeWordFromPhrase = useCallback((phraseIdx, wordIndex, currentPhrases, currentClicked, currentTokens) => {
+    const phrase = currentPhrases[phraseIdx]; const newIndices = phrase.indices.filter(i => i !== wordIndex)
+    articlesAPI.unclickPhrase(id, phrase.text).catch(console.error)
+    const newPhrases = [...currentPhrases]
+    if (newIndices.length >= 2) {
+      const newText = newIndices.map(i => currentTokens.find(t => t.type === 'word' && t.index === i)?.lower).filter(Boolean).join(' ')
+      newPhrases[phraseIdx] = { text: newText, indices: newIndices }; setPhrases(newPhrases)
+      articlesAPI.clickPhrase(id, newText, newIndices).catch(console.error)
+    } else if (newIndices.length === 1) {
+      newPhrases.splice(phraseIdx, 1); setPhrases(newPhrases)
+      const token = currentTokens.find(t => t.type === 'word' && t.index === newIndices[0])
+      if (token) { const nc = new Set(currentClicked); nc.add(token.lower); setClickedWords(nc); articlesAPI.clickWord(id, token.lower, newIndices[0]).catch(console.error) }
+    } else { newPhrases.splice(phraseIdx, 1); setPhrases(newPhrases) }
+  }, [id])
 
-  const handleSingleClick = (wordIndex) => {
+  const handleSingleClick = useCallback((wordIndex) => {
     const { clickedWords: cw, phrases: ph, tokens: toks } = stateRef.current
     const token = toks.find(t => t.type === 'word' && t.index === wordIndex)
     if (!token) return
@@ -659,9 +662,9 @@ function ReadingView() {
         }
       }).catch(console.error)
     }
-  }
+  }, [id, removeWordFromPhrase])
 
-  const createPhrase = (startIdx, endIdx) => {
+  const createPhrase = useCallback((startIdx, endIdx) => {
     const { clickedWords: cw, phrases: ph, tokens: toks } = stateRef.current
     const min = Math.min(startIdx, endIdx); const max = Math.max(startIdx, endIdx)
     const selectedTokens = toks.filter(t => t.type === 'word' && t.index >= min && t.index <= max)
@@ -675,22 +678,19 @@ function ReadingView() {
     overlapping.forEach(pi => { articlesAPI.unclickPhrase(id, ph[pi].text).catch(console.error) })
     const newPhrases = ph.filter((_, idx) => !overlapping.has(idx)); newPhrases.push({ text, indices }); setPhrases(newPhrases)
     articlesAPI.clickPhrase(id, text, indices).catch(console.error)
-  }
+  }, [handleSingleClick, id])
 
-  const removeWordFromPhrase = (phraseIdx, wordIndex, currentPhrases, currentClicked, currentTokens) => {
-    const phrase = currentPhrases[phraseIdx]; const newIndices = phrase.indices.filter(i => i !== wordIndex)
-    articlesAPI.unclickPhrase(id, phrase.text).catch(console.error)
-    const newPhrases = [...currentPhrases]
-    if (newIndices.length >= 2) {
-      const newText = newIndices.map(i => currentTokens.find(t => t.type === 'word' && t.index === i)?.lower).filter(Boolean).join(' ')
-      newPhrases[phraseIdx] = { text: newText, indices: newIndices }; setPhrases(newPhrases)
-      articlesAPI.clickPhrase(id, newText, newIndices).catch(console.error)
-    } else if (newIndices.length === 1) {
-      newPhrases.splice(phraseIdx, 1); setPhrases(newPhrases)
-      const token = currentTokens.find(t => t.type === 'word' && t.index === newIndices[0])
-      if (token) { const nc = new Set(currentClicked); nc.add(token.lower); setClickedWords(nc); articlesAPI.clickWord(id, token.lower, newIndices[0]).catch(console.error) }
-    } else { newPhrases.splice(phraseIdx, 1); setPhrases(newPhrases) }
-  }
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (!mouseDownRef.current) return
+      mouseDownRef.current = false
+      const { dragStart: ds, dragEnd: de } = stateRef.current
+      if (ds !== null && de !== null) { if (!hasDraggedRef.current) handleSingleClick(ds); else createPhrase(ds, de) }
+      setDragStart(null); setDragEnd(null)
+    }
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
+  }, [createPhrase, handleSingleClick])
 
   const getWordClass = (tokenIndex, tokenLower) => {
     const classNames = []

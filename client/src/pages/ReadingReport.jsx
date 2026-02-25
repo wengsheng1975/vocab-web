@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
 import { statsAPI } from '../api'
 import Button from '../components/ui/Button'
@@ -17,13 +17,13 @@ function ReadingReport() {
   const [articleTitle, setArticleTitle] = useState(location.state?.articleTitle || '')
   const [loading, setLoading] = useState(!location.state?.report)
 
-  const loadSession = async () => {
+  const loadSession = useCallback(async () => {
     try { const { data } = await statsAPI.session(id); setSession(data.session); setArticleTitle(data.session.article_title) }
     catch (err) { console.error('加载报告失败:', err) }
     finally { setLoading(false) }
-  }
+  }, [id])
 
-  const loadLatestSession = async () => {
+  const loadLatestSession = useCallback(async () => {
     try {
       const { data } = await statsAPI.sessions()
       const list = data.sessions || []
@@ -34,13 +34,13 @@ function ReadingReport() {
       }
     } catch (err) { console.error('加载最新报告失败:', err) }
     finally { setLoading(false) }
-  }
+  }, [])
 
   useEffect(() => {
     if (report) return
     if (!id || id === 'latest') loadLatestSession()
     else loadSession()
-  }, [id, report])
+  }, [id, report, loadLatestSession, loadSession])
 
   if (loading) return <LoadingSpinner />
 
@@ -65,10 +65,7 @@ function ReadingReport() {
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader title="阅读报告">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="toc-chip">报告目录</span>
-          <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium truncate max-w-xs">{articleTitle}</span>
-        </div>
+        <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium truncate max-w-xs">{articleTitle}</span>
       </PageHeader>
 
       <AnimatedContent stagger={0.08} distance={20} duration={0.5}>

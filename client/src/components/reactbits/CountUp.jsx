@@ -45,7 +45,7 @@ export default function CountUp({
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [to, from, duration])
+  }, [to, from, duration, threshold])
 
   const formatted = (() => {
     const num = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toString()

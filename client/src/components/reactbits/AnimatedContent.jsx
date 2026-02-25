@@ -56,7 +56,7 @@ export default function AnimatedContent({
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [blur, delay, direction, distance, duration, ease, reverse, scale, stagger, threshold])
 
   return (
     <div ref={ref} className={className}>

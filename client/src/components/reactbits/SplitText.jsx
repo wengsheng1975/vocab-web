@@ -45,7 +45,7 @@ export default function SplitText({
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [text])
+  }, [delay, duration, ease, from, onAnimationComplete, text, threshold, to])
 
   const parts = splitType === 'chars'
     ? text.split('').map((ch, i) => (

@@ -48,7 +48,7 @@ export default function BlurText({
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [text])
+  }, [delay, direction, onAnimationComplete, stepDuration, text, threshold])
 
   const parts = animateBy === 'letters'
     ? text.split('').map((ch, i) => (
