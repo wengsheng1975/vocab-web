@@ -50,6 +50,29 @@ function Vocabulary() {
 
   useEffect(() => { loadWords() }, [loadWords])
 
+  useEffect(() => {
+    const handleTargetLevelChanged = () => {
+      setExpandedId(null)
+      setAddingMeaningId(null)
+      setEditingMeaningKey(null)
+      setEditMeaning('')
+      setEditContext('')
+      setPage(1)
+      loadWords()
+    }
+    const handleStorage = (event) => {
+      if (event.key === 'targetLevelChangedAt') {
+        handleTargetLevelChanged()
+      }
+    }
+    window.addEventListener('target-level-changed', handleTargetLevelChanged)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener('target-level-changed', handleTargetLevelChanged)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [loadWords])
+
   const handleMaster = async (id) => { try { await vocabAPI.master(id); loadWords() } catch { alert('操作失败') } }
   const handleRestore = async (id) => { try { await vocabAPI.restore(id); loadWords() } catch { alert('操作失败') } }
 
@@ -243,9 +266,6 @@ function Vocabulary() {
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200 leading-none uppercase">
                             {word.dictLevel}
                           </span>
-                        )}
-                        {word.cetLevel && word.cetLevel !== 'beyond' && (
-                          <span className="text-[10px] text-surface-400 font-medium uppercase">{word.cetLevel === 'cet4' ? 'CET4' : 'CET6'}</span>
                         )}
                       </div>
                       {/* 大纲释义（展开详情时隐藏，避免与下方释义栏重复） */}

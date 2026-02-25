@@ -12,6 +12,7 @@ import Vocabulary from './pages/Vocabulary'
 import Library from './pages/Library'
 import ReadingReport from './pages/ReadingReport'
 import Progress from './pages/Progress'
+import LevelCompare from './pages/LevelCompare'
 import LoadingSpinner from './components/ui/LoadingSpinner'
 
 function PrivateRoute({ children }) {
@@ -42,6 +43,7 @@ function App() {
           <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
           <Route path="/report/:id" element={<PrivateRoute><ReadingReport /></PrivateRoute>} />
           <Route path="/progress" element={<PrivateRoute><Progress /></PrivateRoute>} />
+          <Route path="/level-compare" element={<PrivateRoute><LevelCompare /></PrivateRoute>} />
         </Routes>
       </main>
       {user && <Footer />}

@@ -5,17 +5,27 @@ import PageHeader from '../components/ui/PageHeader'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 
 const EVALUATION_ROW_COLORS = Object.freeze({
-  unknown: 'bg-surface-100/85 text-surface-600',
-  A1: 'bg-primary-50/85 text-primary-700',
-  A2: 'bg-teal-50/85 text-teal-700',
-  B1: 'bg-amber-50/85 text-amber-700',
-  B2: 'bg-orange-50/85 text-orange-700',
-  C1: 'bg-red-50/85 text-red-700',
-  C2: 'bg-rose-50/85 text-rose-700',
+  unknown: 'bg-blue-100/85 text-blue-900',
+  A1: 'bg-blue-100/85 text-blue-900',
+  A2: 'bg-blue-100/85 text-blue-900',
+  B1: 'bg-blue-100/85 text-blue-900',
+  B2: 'bg-blue-100/85 text-blue-900',
+  C1: 'bg-blue-100/85 text-blue-900',
+  C2: 'bg-blue-100/85 text-blue-900',
 })
 
 const TARGET_COLORS = Object.freeze({
-  strong: 'bg-amber-100/85 text-amber-800',
+  strong: 'bg-red-100/85 text-red-800',
+})
+
+const GAOKAO_COLUMN = Object.freeze({ key: 'gaokao', label: '高考英语全国卷' })
+const GAOKAO_SCORE_BY_CEFR = Object.freeze({
+  C2: '—',
+  C1: '140+',
+  B2: '120-139',
+  B1: '90-119',
+  A2: '60-89',
+  A1: '<60',
 })
 
 function LevelCompare() {
@@ -31,10 +41,26 @@ function LevelCompare() {
 
   if (loading) return <LoadingSpinner />
 
-  const columns = tableData?.columns || []
-  const rows = tableData?.rows || []
+  const rawColumns = tableData?.columns || []
+  const hasGaokaoColumn = rawColumns.some((col) => col?.key === 'gaokao')
+  const columns = hasGaokaoColumn
+    ? rawColumns
+    : [
+        ...(rawColumns.slice(0, 1) || []),
+        GAOKAO_COLUMN,
+        ...(rawColumns.slice(1) || []),
+      ]
+  const rawRows = tableData?.rows || []
+  const rows = rawRows.map((row) => ({
+    ...row,
+    gaokao: row?.gaokao || GAOKAO_SCORE_BY_CEFR[row?.cefr] || '—',
+  }))
   const currentEstimatedLevel = tableData?.currentEstimatedLevel || 'unknown'
+  const targetLevel = String(tableData?.targetLevel || '')
   const targetMeta = tableData?.targetMeta || {}
+  const normalizedTargetMeta = targetLevel.startsWith('gaokao_national')
+    ? { ...targetMeta, columnKey: 'gaokao' }
+    : targetMeta
   const cefrHeaderVisible = columns.length >= 1
   const rightHeaderSpan = Math.max(1, columns.length - 1)
   const examHeaderSpan = Math.max(1, columns.length - 2)
@@ -44,7 +70,7 @@ function LevelCompare() {
     ? columns.slice(1, -1)
     : columns.slice(1)
   const leftColumnCount = abilityHeaderVisible ? Math.max(1, columns.length - 1) : Math.max(1, columns.length)
-  const abilityColumnWidth = abilityHeaderVisible ? 34 : 0
+  const abilityColumnWidth = abilityHeaderVisible ? 26 : 0
   const leftColumnWidth = abilityHeaderVisible
     ? `${(100 - abilityColumnWidth) / leftColumnCount}%`
     : `${100 / leftColumnCount}%`
@@ -56,7 +82,7 @@ function LevelCompare() {
 
       <Card padding="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-[13px] border-collapse table-fixed">
+          <table className="w-full min-w-0 text-[12px] border-collapse table-fixed">
             <colgroup>
               {columns.map((col, idx) => (
                 <col
@@ -70,7 +96,7 @@ function LevelCompare() {
                 {cefrHeaderVisible && (
                   <th
                     rowSpan={2}
-                    className="px-4 py-3 text-center align-middle font-semibold border-b border-r border-surface-200"
+                    className="px-2.5 py-2 text-center align-middle font-semibold border-b border-r border-surface-200 whitespace-normal break-words"
                   >
                     评估水平（CEFR）
                   </th>
@@ -79,13 +105,13 @@ function LevelCompare() {
                   <>
                     <th
                       colSpan={examHeaderSpan}
-                      className="px-4 py-3 text-center font-semibold border-b border-r border-surface-200"
+                      className="px-2.5 py-2 text-center font-semibold border-b border-r border-surface-200 whitespace-normal break-words"
                     >
-                      期望等级
+                      期望等级/参加考试
                     </th>
                     <th
                       rowSpan={2}
-                      className="px-4 py-3 text-center align-middle font-semibold border-b border-surface-200 whitespace-normal"
+                      className="px-2.5 py-2 text-center align-middle font-semibold border-b border-surface-200 whitespace-normal break-words"
                     >
                       {abilityColumn?.label || '能力定位'}
                     </th>
@@ -93,9 +119,9 @@ function LevelCompare() {
                 ) : (
                   <th
                     colSpan={rightHeaderSpan}
-                    className="px-4 py-3 text-center font-semibold border-b border-surface-200"
+                    className="px-2.5 py-2 text-center font-semibold border-b border-surface-200 whitespace-normal break-words"
                   >
-                    期望等级
+                    期望等级/参加考试
                   </th>
                 )}
               </tr>
@@ -104,7 +130,7 @@ function LevelCompare() {
                   return (
                     <th
                       key={col.key}
-                      className="px-4 py-3 text-center font-semibold border-b border-r border-surface-200"
+                      className="px-2.5 py-2 text-center font-semibold border-b border-r border-surface-200 whitespace-normal break-words"
                     >
                       {col.label}
                     </th>
@@ -115,12 +141,12 @@ function LevelCompare() {
             <tbody>
               {rows.map((row) => {
                 const isCurrentRow = row.cefr === currentEstimatedLevel
-                const isTargetRow = !!targetMeta?.referenceCefr && row.cefr === targetMeta.referenceCefr
+                const isTargetRow = !!normalizedTargetMeta?.referenceCefr && row.cefr === normalizedTargetMeta.referenceCefr
 
                 return (
                   <tr key={row.cefr} className="bg-white border-b border-surface-100">
                     {columns.map((col, colIndex) => {
-                      const isTargetColumn = targetMeta?.columnKey === col.key && col.key !== 'cefr'
+                      const isTargetColumn = normalizedTargetMeta?.columnKey === col.key && col.key !== 'cefr'
                       const isEvaluationCell = isCurrentRow && col.key === 'cefr'
                       const isTargetCell = isTargetRow && isTargetColumn
                       const isBoth = isEvaluationCell && isTargetCell
@@ -129,18 +155,19 @@ function LevelCompare() {
                       const needVerticalDivider = colIndex < columns.length - 1
                       const evaluationColor = EVALUATION_ROW_COLORS[currentEstimatedLevel] || EVALUATION_ROW_COLORS.unknown
                       const cellHighlightClass = isBoth
-                        ? `${evaluationColor} ring-2 ring-amber-300 font-semibold`
+                        ? `${evaluationColor} ring-2 ring-red-300 font-semibold`
                         : isEvaluationCell
                           ? `${evaluationColor} font-semibold`
                           : isTargetCell
                             ? `${TARGET_COLORS.strong} font-semibold`
                             : ''
+                      const cellValue = typeof row[col.key] === 'string' ? row[col.key].trim() : row[col.key]
                       return (
                         <td
                           key={`${row.cefr}-${col.key}`}
-                          className={`px-4 py-3 text-center align-middle text-surface-700 ${isCefrCell ? 'font-semibold' : ''} ${isAbilityCell ? 'whitespace-normal break-words leading-relaxed' : ''} ${needVerticalDivider ? 'border-r border-surface-200' : ''} ${cellHighlightClass}`}
+                          className={`px-2.5 py-2 text-center align-middle text-surface-700 whitespace-normal break-words ${isCefrCell ? 'font-semibold' : ''} ${isAbilityCell ? 'leading-relaxed' : ''} ${needVerticalDivider ? 'border-r border-surface-200' : ''} ${cellHighlightClass}`}
                         >
-                          {row[col.key]}
+                          {cellValue}
                         </td>
                       )
                     })}

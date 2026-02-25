@@ -240,13 +240,10 @@ function Library() {
   return (
     <div className="max-w-5xl mx-auto space-y-5">
       <PageHeader title="文库">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="toc-chip">内容目录</span>
-          <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium">
-            共 {articles.length} 篇文章
-            {articles.filter((a) => !a.is_completed).length > 0 && `（${articles.filter((a) => !a.is_completed).length} 篇未读完）`}
-          </span>
-        </div>
+        <span className="text-[13px] text-surface-500 bg-surface-100 px-2.5 py-1 rounded-md font-medium">
+          共 {articles.length} 篇文章
+          {articles.filter((a) => !a.is_completed).length > 0 && `（${articles.filter((a) => !a.is_completed).length} 篇未读完）`}
+        </span>
       </PageHeader>
 
       {suggestions.length > 0 && (

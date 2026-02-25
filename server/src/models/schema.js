@@ -11,6 +11,7 @@ function initDatabase() {
       estimated_level TEXT DEFAULT 'unknown',
       target_level TEXT DEFAULT 'none',
       total_articles_read INTEGER DEFAULT 0,
+      level_reset_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -30,6 +31,9 @@ function initDatabase() {
   // 兼容旧数据库：如果 target_level 列不存在则添加
   try {
     db.exec(`ALTER TABLE users ADD COLUMN target_level TEXT DEFAULT 'none'`);
+  } catch { /* 列已存在，忽略 */ }
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN level_reset_at DATETIME`);
   } catch { /* 列已存在，忽略 */ }
 
   // 文章表

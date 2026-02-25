@@ -46,6 +46,7 @@ export const authAPI = {
   resetPassword: (data) => api.post('/auth/reset-password', data),
   getTargetLevel: () => api.get('/auth/target-level'),
   setTargetLevel: (targetLevel) => api.put('/auth/target-level', { targetLevel }),
+  resetEvaluation: () => api.post('/auth/reset-evaluation'),
 };
 
 // 文章 API
@@ -101,6 +102,7 @@ export const statsAPI = {
   session: (id) => api.get(`/stats/session/${id}`),
   sessions: () => api.get('/stats/sessions'),
   reviewSuggestions: () => api.get('/stats/review-suggestions'),
+  levelCompareTable: () => api.get('/stats/level-compare-table'),
 };
 
 export default api;

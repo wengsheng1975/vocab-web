@@ -169,33 +169,6 @@
       linear-gradient(180deg, #f7f9f8 0%, #f4f8f7 48%, #f7f9f8 100%);
   }
 
-  .toc-chip {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide uppercase;
-    color: #13675b;
-    background: rgba(21, 130, 113, 0.12);
-    border: 1px solid rgba(21, 130, 113, 0.2);
-  }
-
-  .toc-pill {
-    @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[13px] font-medium transition-all duration-200;
-    border-color: #dbe5e3;
-    color: #4c605d;
-    background: rgba(255, 255, 255, 0.7);
-  }
-
-  .toc-pill:hover {
-    border-color: #9bcfc6;
-    color: #13675b;
-    background: #ffffff;
-  }
-
-  .toc-pill-active {
-    border-color: #43b9a8;
-    color: #124f47;
-    background: #eefaf8;
-    box-shadow: 0 2px 8px rgba(19, 103, 91, 0.12);
-  }
-
   .hero-panel {
     background: linear-gradient(150deg, rgba(16, 63, 57, 0.94) 0%, rgba(19, 103, 91, 0.92) 50%, rgba(194, 65, 12, 0.76) 100%);
   }

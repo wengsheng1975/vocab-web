@@ -72,9 +72,7 @@ function Progress() {
 
   return (
     <div className="max-w-4xl mx-auto" ref={chartContainerRef}>
-      <PageHeader title="学习进度">
-        <span className="toc-chip">进度目录</span>
-      </PageHeader>
+      <PageHeader title="学习进度" />
 
       {/* Overview Cards */}
       <AnimatedContent stagger={0.08} distance={15} duration={0.4}>

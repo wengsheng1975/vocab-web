@@ -8,6 +8,7 @@ const { authenticateToken, validateIdParam } = require('../middleware/auth');
 const { extractWords, assessDifficulty, isDifficultyAppropriate } = require('../utils/difficulty');
 const { getSpellingSuggestions } = require('../utils/spellCheck');
 const { listSources: listCrawlerSources, fetchFeedPreview, fetchArticleByUrl } = require('../services/crawler/fetcher');
+const { normalizeTargetLevel, getCrawlerLevelCandidates } = require('../constants/targetLevels');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -335,23 +336,15 @@ function resolveCrawlerRecommendedLevel(userId) {
   `).get(userId);
 
   const estimated = user?.estimated_level || 'unknown';
-  const target = user?.target_level || 'none';
+  const target = normalizeTargetLevel(user?.target_level || 'none');
 
   if (estimated !== 'unknown') {
     return { level: estimated, source: 'estimated_level' };
   }
 
   // 首次使用：按目标级别给一个随机基准等级，用于探索用户阶段水平
-  if (target === 'cet6') {
-    return { level: randomPick(['B1', 'B2', 'C1']), source: 'target_level_random(cet6)' };
-  }
-  if (target === 'cet4') {
-    return { level: randomPick(['A2', 'B1', 'B2']), source: 'target_level_random(cet4)' };
-  }
-  if (target === 'gaokao') {
-    return { level: randomPick(['A2', 'B1']), source: 'target_level_random(gaokao)' };
-  }
-  return { level: randomPick(['A2', 'B1']), source: 'target_level_random(none)' };
+  const candidates = getCrawlerLevelCandidates(target);
+  return { level: randomPick(candidates), source: `target_level_random(${target})` };
 }
 
 function parseOptionalFolderId(rawValue) {
@@ -1509,7 +1502,11 @@ router.post('/:id/finish', validateIdParam, (req, res) => {
 
       // 6. 评估用户水平
       const recentSessions = db.prepare(`
-        SELECT * FROM reading_sessions WHERE user_id = ?
+        SELECT rs.*
+        FROM reading_sessions rs
+        LEFT JOIN users u ON u.id = rs.user_id
+        WHERE rs.user_id = ?
+          AND (u.level_reset_at IS NULL OR rs.created_at >= u.level_reset_at)
         ORDER BY created_at DESC LIMIT 10
       `).all(userId);
 

@@ -4,8 +4,110 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../config/db');
 const { JWT_SECRET, authenticateToken, blacklistToken } = require('../middleware/auth');
+const { normalizeTargetLevel, isValidTargetLevel, TARGET_LEVELS } = require('../constants/targetLevels');
+const { isOutOfScope, getWordMorphInfo } = require('../utils/cetWords');
+const { lookupDictByTargetLevel } = require('../utils/cetDictionary');
 
 const router = express.Router();
+
+const resetEvaluationTransaction = db.transaction((userId) => {
+  db.prepare(`
+    UPDATE users
+    SET estimated_level = 'A1',
+        total_articles_read = 0,
+        level_reset_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(userId);
+
+  return db.prepare(`
+    SELECT estimated_level, total_articles_read, target_level, level_reset_at
+    FROM users
+    WHERE id = ?
+  `).get(userId);
+});
+
+function extractAdjectiveMeaning(baseMeaning) {
+  const text = String(baseMeaning || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const posBoundary = '(?:n\\.|v\\.|vi\\.|vt\\.|a\\.|adj\\.|ad\\.|adv\\.|pron\\.|prep\\.|conj\\.|num\\.|int\\.|aux\\.|art\\.)';
+  const re = new RegExp(`(a\\.|adj\\.)(.*?)(?=\\s${posBoundary}|$)`, 'i');
+  const match = text.match(re);
+  if (!match) return '';
+  const marker = match[1].toLowerCase() === 'adj.' ? 'adj.' : 'a.';
+  const content = String(match[2] || '').trim();
+  return content ? `${marker}${content}` : marker;
+}
+
+function resolveInScopeMeaningSnapshot(word, targetLevel) {
+  const normalizedWord = String(word || '').toLowerCase().trim();
+  if (!normalizedWord) return null;
+  const morph = getWordMorphInfo(normalizedWord);
+  const { entry, directHit } = lookupDictByTargetLevel(normalizedWord, targetLevel, { lemma: morph?.lemma });
+  const baseMeaning = String(entry?.cn || '').trim();
+  const lemma = String(morph?.lemma || '').toLowerCase().trim();
+  const form = String(morph?.form || '');
+  const isComparative = form.includes('比较级');
+  const isSuperlative = form.includes('最高级');
+
+  if (!baseMeaning) {
+    if ((isComparative || isSuperlative) && lemma) {
+      return isComparative ? `（更）${lemma}` : `（最）${lemma}`;
+    }
+    return '纲内词（词典待补充）';
+  }
+
+  if (isComparative || isSuperlative) {
+    const adjectiveMeaning = extractAdjectiveMeaning(baseMeaning);
+    if (adjectiveMeaning) {
+      if (directHit) return adjectiveMeaning;
+      return isComparative ? `（更）${adjectiveMeaning}` : `（最）${adjectiveMeaning}`;
+    }
+    if (lemma) {
+      return isComparative ? `（更）${lemma}` : `（最）${lemma}`;
+    }
+  }
+
+  return baseMeaning;
+}
+
+function recheckVocabularyByTargetLevel(userId, prevTargetLevel, nextTargetLevel) {
+  const words = db.prepare('SELECT word FROM vocabulary WHERE user_id = ?').all(userId);
+  const stats = {
+    checkedWords: words.length,
+    becameInScope: 0,
+    becameOutOfScope: 0,
+    inScopeMeaningChanged: 0,
+    inScopeCount: 0,
+    outOfScopeCount: 0,
+  };
+
+  for (const row of words) {
+    const word = String(row?.word || '').toLowerCase().trim();
+    if (!word) continue;
+
+    const wasOutOfScope = isOutOfScope(word, prevTargetLevel);
+    const isNowOutOfScope = isOutOfScope(word, nextTargetLevel);
+
+    if (wasOutOfScope && !isNowOutOfScope) stats.becameInScope += 1;
+    if (!wasOutOfScope && isNowOutOfScope) stats.becameOutOfScope += 1;
+
+    if (isNowOutOfScope) {
+      stats.outOfScopeCount += 1;
+      continue;
+    }
+
+    stats.inScopeCount += 1;
+    if (!wasOutOfScope) {
+      const prevMeaning = resolveInScopeMeaningSnapshot(word, prevTargetLevel);
+      const nextMeaning = resolveInScopeMeaningSnapshot(word, nextTargetLevel);
+      if (prevMeaning !== nextMeaning) {
+        stats.inScopeMeaningChanged += 1;
+      }
+    }
+  }
+
+  return stats;
+}
 
 // ===== 输入校验工具 =====
 
@@ -185,17 +287,35 @@ router.post('/demo', (req, res) => {
 // ===== 获取/设置目标英语等级 =====
 router.get('/target-level', authenticateToken, (req, res) => {
   const user = db.prepare('SELECT target_level FROM users WHERE id = ?').get(req.user.id);
-  res.json({ targetLevel: user?.target_level || 'none' });
+  res.json({ targetLevel: normalizeTargetLevel(user?.target_level || 'none') });
 });
 
 router.put('/target-level', authenticateToken, (req, res) => {
-  const { targetLevel } = req.body;
-  const valid = ['none', 'gaokao', 'cet4', 'cet6'];
-  if (!valid.includes(targetLevel)) {
-    return res.status(400).json({ error: '无效的目标等级，可选值: none, gaokao, cet4, cet6' });
+  const normalizedTargetLevel = normalizeTargetLevel(req.body?.targetLevel);
+  if (!isValidTargetLevel(normalizedTargetLevel)) {
+    return res.status(400).json({ error: `无效的目标等级，可选值: ${TARGET_LEVELS.join(', ')}` });
   }
-  db.prepare('UPDATE users SET target_level = ? WHERE id = ?').run(targetLevel, req.user.id);
-  res.json({ message: '目标等级已更新', targetLevel });
+  const current = db.prepare('SELECT target_level FROM users WHERE id = ?').get(req.user.id);
+  const prevTargetLevel = normalizeTargetLevel(current?.target_level || 'none');
+  db.prepare('UPDATE users SET target_level = ? WHERE id = ?').run(normalizedTargetLevel, req.user.id);
+  const vocabularyRecheck = recheckVocabularyByTargetLevel(req.user.id, prevTargetLevel, normalizedTargetLevel);
+  res.json({
+    message: '目标等级已更新，生词本已按新等级重新核查',
+    targetLevel: normalizedTargetLevel,
+    vocabularyRecheck,
+  });
+});
+
+// ===== 重新评估：重置当前评估等级，并设置新的评估起点 =====
+router.post('/reset-evaluation', authenticateToken, (req, res) => {
+  const updated = resetEvaluationTransaction(req.user.id);
+  res.json({
+    message: '评估已重置，请通过新的阅读记录重新评估',
+    estimatedLevel: updated?.estimated_level || 'A1',
+    targetLevel: normalizeTargetLevel(updated?.target_level || 'none'),
+    totalArticlesRead: updated?.total_articles_read || 0,
+    levelResetAt: updated?.level_reset_at || null,
+  });
 });
 
 router.post('/logout', authenticateToken, (req, res) => {

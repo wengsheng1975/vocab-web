@@ -1,35 +1,38 @@
 const express = require('express');
 const db = require('../config/db');
 const { authenticateToken, validateIdParam } = require('../middleware/auth');
-const { isOutOfScope, getWordCETLevel, getWordMorphInfo } = require('../utils/cetWords');
-const { lookupDict, DICT } = require('../utils/cetDictionary');
+const { isOutOfScope, getWordMorphInfo } = require('../utils/cetWords');
+const { normalizeTargetLevel, resolveTargetBaseLevel } = require('../constants/targetLevels');
+const { lookupDictByTargetLevel } = require('../utils/cetDictionary');
 
 const router = express.Router();
 router.use(authenticateToken);
 
-function resolveDictEntryWithMorph(wordText, morph) {
+const TARGET_SCOPE_LABELS = Object.freeze({
+  gaokao_national: 'GAOKAO',
+  cet4: 'CET4',
+  cet6: 'CET6',
+  tem4: 'TEM4',
+  tem8: 'TEM8',
+  toefl: 'TOEFL',
+  ielts: 'IELTS',
+  cambridge: 'CAMBRIDGE',
+});
+
+function resolveScopeLabel(targetLevel, dictEntryLevel) {
+  const base = resolveTargetBaseLevel(targetLevel);
+  if (TARGET_SCOPE_LABELS[base]) {
+    return TARGET_SCOPE_LABELS[base];
+  }
+  return dictEntryLevel ? String(dictEntryLevel).toUpperCase() : null;
+}
+
+function resolveDictEntryWithMorph(wordText, morph, targetLevel) {
   const normalizedWord = String(wordText || '').toLowerCase().trim();
   if (!normalizedWord) {
-    return { entry: null, fromLemma: false, directHit: false };
+    return { entry: null, fromLemma: false, directHit: false, matchedLevel: null };
   }
-
-  // 先查原词，避免 lookupDict 内部词形还原掩盖“是否来自原型”的信息
-  if (DICT[normalizedWord]) {
-    return { entry: DICT[normalizedWord], fromLemma: false, directHit: true };
-  }
-
-  const lemma = String(morph?.lemma || '').toLowerCase().trim();
-  if (lemma && lemma !== normalizedWord && DICT[lemma]) {
-    return { entry: DICT[lemma], fromLemma: true, directHit: false };
-  }
-
-  // 兜底：沿用词典工具的内部查找逻辑
-  const fallback = lookupDict(normalizedWord);
-  return {
-    entry: fallback,
-    fromLemma: Boolean(fallback && lemma && lemma !== normalizedWord),
-    directHit: false,
-  };
+  return lookupDictByTargetLevel(normalizedWord, targetLevel, { lemma: morph?.lemma });
 }
 
 function extractAdjectiveMeaning(baseMeaning) {
@@ -46,7 +49,8 @@ function extractAdjectiveMeaning(baseMeaning) {
   return content ? `${marker}${content}` : marker;
 }
 
-function getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit) {
+function getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit, { inScope }) {
+  if (!inScope) return '';
   const baseMeaning = String(dictEntry?.cn || '').trim();
   const normalizedWord = String(wordText || '').toLowerCase().trim();
   const lemma = String(morph?.lemma || '').toLowerCase().trim();
@@ -89,15 +93,11 @@ function getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit
   }
 
   // 纲内词兜底：即使词典遗漏，也不返回空释义
-  const level = getWordCETLevel(normalizedWord);
-  if (level !== 'beyond') {
-    return '纲内词（词典待补充）';
-  }
-
-  return '';
+  return '纲内词（词典待补充）';
 }
 
-function getDisplayDictMeaning(dictEntry, wordText, morph, directHit) {
+function getDisplayDictMeaning(dictEntry, wordText, morph, directHit, { inScope }) {
+  if (!inScope) return null;
   const baseMeaning = String(dictEntry?.cn || '').trim();
   const normalizedWord = String(wordText || '').toLowerCase().trim();
   const lemma = String(morph?.lemma || '').toLowerCase().trim();
@@ -109,8 +109,7 @@ function getDisplayDictMeaning(dictEntry, wordText, morph, directHit) {
     if ((isComparative || isSuperlative) && lemma) {
       return isComparative ? `（更）${lemma}` : `（最）${lemma}`;
     }
-    const level = getWordCETLevel(normalizedWord);
-    return level !== 'beyond' ? '纲内词（词典待补充）' : null;
+    return '纲内词（词典待补充）';
   }
 
   if (isComparative || isSuperlative) {
@@ -127,19 +126,22 @@ function getDisplayDictMeaning(dictEntry, wordText, morph, directHit) {
   return baseMeaning;
 }
 
-function withFallbackMeaning(meanings, dictEntry, wordText, morph, fromLemma, directHit) {
+function withFallbackMeaning(meanings, dictEntry, wordText, morph, fromLemma, directHit, { inScope, scopeLabel }) {
   const normalizedMeanings = (meanings || []).filter(
     (m) => String(m?.meaning || '').trim().length > 0
   );
-  const hasUsableMeaning = normalizedMeanings.length > 0;
-  if (hasUsableMeaning) return normalizedMeanings;
 
-  const fallbackMeaning = getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit);
-  if (!fallbackMeaning) return normalizedMeanings;
+  // 纲外词：默认不提供系统释义，仅展示用户自定义释义
+  if (!inScope) return normalizedMeanings;
+
+  // 纲内词：始终按当前等级词库释义展示，避免历史自定义释义混淆
+  const fallbackMeaning = getFallbackMeaningText(dictEntry, wordText, morph, fromLemma, directHit, { inScope: true });
+  if (!fallbackMeaning) return [];
 
   const lemma = String(morph?.lemma || '').toLowerCase().trim();
   const form = String(morph?.form || '');
   const isComparativeOrSuperlative = form.includes('比较级') || form.includes('最高级');
+  const baseSource = scopeLabel ? `词典释义（${scopeLabel}）` : '词典释义';
 
   return [{
     id: null,
@@ -149,8 +151,8 @@ function withFallbackMeaning(meanings, dictEntry, wordText, morph, fromLemma, di
     context_sentence: '',
     created_at: null,
     article_title: !isComparativeOrSuperlative && lemma && lemma !== String(wordText || '').toLowerCase().trim()
-      ? `词典释义（原型：${lemma}）`
-      : '词典释义',
+      ? `${baseSource}（原型：${lemma}）`
+      : baseSource,
     is_dict_fallback: true,
   }];
 }
@@ -209,10 +211,12 @@ router.get('/', (req, res) => {
 
   // 获取用户的目标等级，用于判断超纲
   const userRow = db.prepare('SELECT target_level FROM users WHERE id = ?').get(userId);
-  const targetLevel = userRow?.target_level || 'none';
+  const targetLevel = normalizeTargetLevel(userRow?.target_level || 'none');
 
   // 获取每个单词的释义 + 超纲标记
   const wordsWithMeanings = words.map(word => {
+    const outOfScope = isOutOfScope(word.word, targetLevel);
+    const inScope = !outOfScope;
     const dbMeanings = db.prepare(`
       SELECT wm.*, a.title as article_title
       FROM word_meanings wm
@@ -222,18 +226,27 @@ router.get('/', (req, res) => {
     `).all(word.id);
 
     const morph = getWordMorphInfo(word.word);
-    const { entry: dictEntry, fromLemma, directHit } = resolveDictEntryWithMorph(word.word, morph);
-    const meanings = withFallbackMeaning(dbMeanings, dictEntry, word.word, morph, fromLemma, directHit);
+    const { entry: dictEntry, fromLemma, directHit } = resolveDictEntryWithMorph(word.word, morph, targetLevel);
+    const scopeLevel = resolveScopeLabel(targetLevel, dictEntry?.lv);
+    const meanings = withFallbackMeaning(
+      dbMeanings,
+      dictEntry,
+      word.word,
+      morph,
+      fromLemma,
+      directHit,
+      { inScope, scopeLabel: scopeLevel }
+    );
 
     return {
       ...word,
       meanings,
-      cetLevel: getWordCETLevel(word.word),
-      outOfScope: isOutOfScope(word.word, targetLevel),
+      outOfScope,
       lemma: morph.lemma,
       wordForm: morph.form,
       dictPhonetic: dictEntry?.ph || null,   // 大纲美式音标
-      dictMeaning: getDisplayDictMeaning(dictEntry, word.word, morph, directHit),
+      dictLevel: scopeLevel,
+      dictMeaning: getDisplayDictMeaning(dictEntry, word.word, morph, directHit, { inScope }),
     };
   });
 
@@ -293,6 +306,11 @@ router.get('/:id', validateIdParam, (req, res) => {
     return res.status(404).json({ error: '单词不存在' });
   }
 
+  const userRow = db.prepare('SELECT target_level FROM users WHERE id = ?').get(userId);
+  const targetLevel = normalizeTargetLevel(userRow?.target_level || 'none');
+  const outOfScope = isOutOfScope(word.word, targetLevel);
+  const inScope = !outOfScope;
+
   const dbMeanings = db.prepare(`
     SELECT wm.*, a.title as article_title
     FROM word_meanings wm
@@ -302,17 +320,27 @@ router.get('/:id', validateIdParam, (req, res) => {
   `).all(vocabId);
 
   const morph = getWordMorphInfo(word.word);
-  const { entry: dictEntry, fromLemma, directHit } = resolveDictEntryWithMorph(word.word, morph);
-  const meanings = withFallbackMeaning(dbMeanings, dictEntry, word.word, morph, fromLemma, directHit);
+  const { entry: dictEntry, fromLemma, directHit } = resolveDictEntryWithMorph(word.word, morph, targetLevel);
+  const scopeLevel = resolveScopeLabel(targetLevel, dictEntry?.lv);
+  const meanings = withFallbackMeaning(
+    dbMeanings,
+    dictEntry,
+    word.word,
+    morph,
+    fromLemma,
+    directHit,
+    { inScope, scopeLabel: scopeLevel }
+  );
 
   res.json({
     ...word,
     meanings,
-    cetLevel: getWordCETLevel(word.word),
+    outOfScope,
     lemma: morph.lemma,
     wordForm: morph.form,
     dictPhonetic: dictEntry?.ph || null,
-    dictMeaning: getDisplayDictMeaning(dictEntry, word.word, morph, directHit),
+    dictLevel: scopeLevel,
+    dictMeaning: getDisplayDictMeaning(dictEntry, word.word, morph, directHit, { inScope }),
   });
 });
 
@@ -340,6 +368,12 @@ router.put('/:id', validateIdParam, (req, res) => {
 
   // 如果提供了新的释义
   if (meaning) {
+    const userRow = db.prepare('SELECT target_level FROM users WHERE id = ?').get(userId);
+    const targetLevel = normalizeTargetLevel(userRow?.target_level || 'none');
+    const outOfScope = isOutOfScope(word.word, targetLevel);
+    if (!outOfScope) {
+      return res.status(400).json({ error: '纲内词使用系统词典释义，不支持自定义释义' });
+    }
     if (typeof meaning !== 'string' || meaning.length > 500) {
       return res.status(400).json({ error: '释义过长' });
     }
@@ -399,8 +433,15 @@ router.put('/:id/meanings/:meaningId', validateIdParam, (req, res) => {
   }
   const { meaning, context_sentence } = req.body;
 
-  const vocab = db.prepare('SELECT id FROM vocabulary WHERE id = ? AND user_id = ?').get(vocabId, userId);
+  const vocab = db.prepare('SELECT id, word FROM vocabulary WHERE id = ? AND user_id = ?').get(vocabId, userId);
   if (!vocab) return res.status(404).json({ error: '单词不存在' });
+
+  const userRow = db.prepare('SELECT target_level FROM users WHERE id = ?').get(userId);
+  const targetLevel = normalizeTargetLevel(userRow?.target_level || 'none');
+  const outOfScope = isOutOfScope(vocab.word, targetLevel);
+  if (!outOfScope) {
+    return res.status(400).json({ error: '纲内词使用系统词典释义，不支持编辑自定义释义' });
+  }
 
   const row = db.prepare('SELECT id FROM word_meanings WHERE id = ? AND vocabulary_id = ?').get(meaningId, vocabId);
   if (!row) return res.status(404).json({ error: '释义不存在' });

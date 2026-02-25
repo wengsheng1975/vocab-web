@@ -5,12 +5,13 @@
  * CET-6: 约 5500 词 — 在 CET-4 基础上扩展约 1000 词
  *
  * 词库用于判断用户生词是否"超纲"：
- *   - 目标 高考: 不在高考常见词范围（A1/A2/B1）中的词为超纲
+ *   - 目标 高考英语全国卷: 课标词汇核心集（课标词 + 过滤后的 CET-4 基础集）
  *   - 目标 CET-4: 不在 CET4 中的词为超纲
  *   - 目标 CET-6: 不在 CET4+CET6 中的词为超纲
+ *   - 目标 TEM/TOEFL/IELTS/剑桥通用英语: CET6 + 对应考试核心词
  */
-const { getAllCommonWords } = require('./commonWords');
-const GAOKAO_WORDS = getAllCommonWords();
+const { EXAM_PROFILE_WORDS } = require('./examWords');
+const { normalizeTargetLevel, resolveTargetBaseLevel } = require('../constants/targetLevels');
 
 // ===== CET-4 核心词汇 =====
 const CET4_WORDS = new Set([
@@ -659,6 +660,29 @@ const CET6_EXTRA_WORDS = new Set([
 
 // ===== 合并查找集合 =====
 const CET6_ALL = new Set([...CET4_WORDS, ...CET6_EXTRA_WORDS]);
+const ADVANCED_EXAM_PROFILE_WORDS = new Set([
+  ...(EXAM_PROFILE_WORDS.tem4 || []),
+  ...(EXAM_PROFILE_WORDS.tem8 || []),
+  ...(EXAM_PROFILE_WORDS.toefl || []),
+  ...(EXAM_PROFILE_WORDS.ielts || []),
+  ...(EXAM_PROFILE_WORDS.cambridge || []),
+]);
+const GAOKAO_NATIONAL_WORDS = new Set([
+  ...[...CET4_WORDS].filter((word) => !ADVANCED_EXAM_PROFILE_WORDS.has(word)),
+  ...(EXAM_PROFILE_WORDS.gaokao_national || []),
+]);
+
+const TARGET_LEVEL_WORD_SETS = {
+  gaokao_national: GAOKAO_NATIONAL_WORDS,
+  cet4: CET4_WORDS,
+  cet6: CET6_ALL,
+  tem4: new Set([...CET6_ALL, ...EXAM_PROFILE_WORDS.tem4]),
+  // TEM-8 作为更高等级，需覆盖 TEM-4 词集
+  tem8: new Set([...CET6_ALL, ...EXAM_PROFILE_WORDS.tem4, ...EXAM_PROFILE_WORDS.tem8]),
+  toefl: new Set([...CET6_ALL, ...EXAM_PROFILE_WORDS.toefl]),
+  ielts: new Set([...CET6_ALL, ...EXAM_PROFILE_WORDS.ielts]),
+  cambridge: new Set([...CET6_ALL, ...EXAM_PROFILE_WORDS.cambridge]),
+};
 
 // ===== 词形还原（Lemmatization）=====
 // 不规则变形映射表：变形 → { lemma: 原形, form: 词形说明 }
@@ -1136,29 +1160,32 @@ function getWordCETLevel(word) {
 /**
  * 判断单词是否超出用户设定的目标等级（支持词形还原）
  * @param {string} word
- * @param {'gaokao'|'cet4'|'cet6'|'none'} targetLevel
+ * @param {'gaokao_national'|'cet4'|'cet6'|'tem4'|'tem8'|'toefl'|'ielts'|'cambridge'|'none'} targetLevel
  * @returns {boolean} true 表示超纲
  */
 function isOutOfScope(word, targetLevel) {
-  if (!targetLevel || targetLevel === 'none') return false;
+  const normalizedTargetLevel = normalizeTargetLevel(targetLevel);
+  const baseLevel = resolveTargetBaseLevel(normalizedTargetLevel);
+  if (!baseLevel || baseLevel === 'none') return false;
   const w = word.toLowerCase().trim();
-  if (targetLevel === 'gaokao') return !isWordInSet(w, GAOKAO_WORDS);
-  if (targetLevel === 'cet4') return !isWordInSet(w, CET4_WORDS);
-  if (targetLevel === 'cet6') return !isWordInSet(w, CET6_ALL);
-  return false;
+  const wordSet = TARGET_LEVEL_WORD_SETS[baseLevel];
+  if (!wordSet) return false;
+  return !isWordInSet(w, wordSet);
 }
 
 /**
  * 批量检查一组单词中的超纲词
  * @param {string[]} words
- * @param {'gaokao'|'cet4'|'cet6'|'none'} targetLevel
+ * @param {'gaokao_national'|'cet4'|'cet6'|'tem4'|'tem8'|'toefl'|'ielts'|'cambridge'|'none'} targetLevel
  * @returns {Set<string>} 超纲词集合
  */
 function getOutOfScopeWords(words, targetLevel) {
-  if (!targetLevel || targetLevel === 'none') return new Set();
+  const normalizedTargetLevel = normalizeTargetLevel(targetLevel);
+  const baseLevel = resolveTargetBaseLevel(normalizedTargetLevel);
+  if (!baseLevel || baseLevel === 'none') return new Set();
   const result = new Set();
   for (const word of words) {
-    if (isOutOfScope(word, targetLevel)) {
+    if (isOutOfScope(word, baseLevel)) {
       result.add(word.toLowerCase().trim());
     }
   }
@@ -1166,10 +1193,12 @@ function getOutOfScopeWords(words, targetLevel) {
 }
 
 module.exports = {
+  GAOKAO_NATIONAL_WORDS,
   CET4_WORDS,
   CET6_EXTRA_WORDS,
   CET6_ALL,
   IRREGULAR_FORMS,
+  normalizeTargetLevel,
   getWordCETLevel,
   getWordMorphInfo,
   isOutOfScope,

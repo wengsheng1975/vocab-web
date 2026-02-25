@@ -382,9 +382,7 @@ function ImportArticle() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <PageHeader title={isEditMode ? '修改文章' : '导入文章'}>
-        <span className="toc-chip">{isEditMode ? '内容修订' : '内容导入'}</span>
-      </PageHeader>
+      <PageHeader title={isEditMode ? '修改文章' : '导入文章'} />
       <AnimatedContent distance={20} duration={0.5}>
         {loadingArticle ? (
           <Card padding="p-7">

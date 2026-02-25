@@ -2,11 +2,12 @@
  * CET-4/CET-6 大纲词典
  * 包含中文释义和美式音标 (IPA)
  *
- * 格式: word → { ph: '美式音标', cn: '中文释义', lv: 'cet4'|'cet6' }
+ * 格式: word → { ph: '美式音标', cn: '中文释义', lv: 'gaokao'|'cet4'|'cet6' }
  *
  * 数据来源：大学英语四六级考试大纲词汇
  * 本文件仅收录高频核心词汇的释义和音标
  */
+const { resolveTargetBaseLevel } = require('../constants/targetLevels');
 
 const DICT = {
   // ===== A =====
@@ -1879,11 +1880,617 @@ const DICT = {
   'zone': { ph: '/zoʊn/', cn: 'n.区域，地带', lv: 'cet4' },
 };
 
-// 自动补齐：确保所有 CET 词在词典中至少有占位条目，避免出现“纲内词无释义”
-function hydrateCETPlaceholders() {
+// 补全一批高频 CET 缺失词，避免出现“纲内词，释义补充中”
+const SUPPLEMENTAL_CET_CORE = {
+  wake: { ph: '', cn: 'v.醒来；唤醒', lv: 'cet4' },
+  shoot: { ph: '', cn: 'v.射击；拍摄', lv: 'cet4' },
+  steal: { ph: '', cn: 'v.偷窃', lv: 'cet4' },
+  dig: { ph: '', cn: 'v.挖掘', lv: 'cet4' },
+  freeze: { ph: '', cn: 'v.结冰；冻住', lv: 'cet4' },
+  bite: { ph: '', cn: 'v.咬；叮', lv: 'cet4' },
+  tear: { ph: '', cn: 'v.撕裂 n.眼泪', lv: 'cet4' },
+  bend: { ph: '', cn: 'v.弯曲', lv: 'cet4' },
+  lend: { ph: '', cn: 'v.借出', lv: 'cet4' },
+  shine: { ph: '', cn: 'v.照耀；发光', lv: 'cet4' },
+  bind: { ph: '', cn: 'v.捆绑；约束', lv: 'cet4' },
+  swear: { ph: '', cn: 'v.发誓；咒骂', lv: 'cet4' },
+  forgive: { ph: '', cn: 'v.原谅', lv: 'cet4' },
+  weave: { ph: '', cn: 'v.编织', lv: 'cet4' },
+  withdraw: { ph: '', cn: 'v.撤回；提取', lv: 'cet4' },
+  overcome: { ph: '', cn: 'v.克服', lv: 'cet4' },
+  undertake: { ph: '', cn: 'v.承担；着手做', lv: 'cet4' },
+  cat: { ph: '', cn: 'n.猫', lv: 'cet4' },
+  pen: { ph: '', cn: 'n.钢笔', lv: 'cet4' },
+  bird: { ph: '', cn: 'n.鸟', lv: 'cet4' },
+  rice: { ph: '', cn: 'n.米；米饭', lv: 'cet4' },
+  wet: { ph: '', cn: 'a.湿的', lv: 'cet4' },
+  shop: { ph: '', cn: 'n.商店 v.购物', lv: 'cet4' },
+  sick: { ph: '', cn: 'a.生病的；恶心的', lv: 'cet4' },
+  score: { ph: '', cn: 'n.分数 v.得分', lv: 'cet4' },
+  taste: { ph: '', cn: 'n./v.味道；品尝', lv: 'cet4' },
+  bathroom: { ph: '', cn: 'n.浴室；卫生间', lv: 'cet4' },
+  battery: { ph: '', cn: 'n.电池', lv: 'cet4' },
+  bay: { ph: '', cn: 'n.海湾', lv: 'cet4' },
+  beach: { ph: '', cn: 'n.海滩', lv: 'cet4' },
+  beam: { ph: '', cn: 'n.横梁；光束', lv: 'cet4' },
+  bean: { ph: '', cn: 'n.豆；豆类', lv: 'cet4' },
+  beard: { ph: '', cn: 'n.胡须', lv: 'cet4' },
+  bearing: { ph: '', cn: 'n.举止；方位；轴承', lv: 'cet4' },
+  beast: { ph: '', cn: 'n.野兽', lv: 'cet4' },
+  beauty: { ph: '', cn: 'n.美；美人', lv: 'cet4' },
+  bedroom: { ph: '', cn: 'n.卧室', lv: 'cet4' },
+  beef: { ph: '', cn: 'n.牛肉', lv: 'cet4' },
+  beer: { ph: '', cn: 'n.啤酒', lv: 'cet4' },
+  beg: { ph: '', cn: 'v.乞求；恳求', lv: 'cet4' },
+  beginning: { ph: '', cn: 'n.开始，开端', lv: 'cet4' },
+  behave: { ph: '', cn: 'v.表现；举止', lv: 'cet4' },
+  being: { ph: '', cn: 'n.存在；生物', lv: 'cet4' },
+  bell: { ph: '', cn: 'n.铃', lv: 'cet4' },
+  beloved: { ph: '', cn: 'a.深爱的 n.爱人', lv: 'cet4' },
+  belt: { ph: '', cn: 'n.腰带；地带', lv: 'cet4' },
+  bench: { ph: '', cn: 'n.长凳', lv: 'cet4' },
+  beneath: { ph: '', cn: 'prep./ad.在…下面', lv: 'cet4' },
+  beneficial: { ph: '', cn: 'a.有益的', lv: 'cet4' },
+  besides: { ph: '', cn: 'prep./ad.此外；除…之外', lv: 'cet4' },
+  bet: { ph: '', cn: 'v./n.打赌', lv: 'cet4' },
+  betray: { ph: '', cn: 'v.背叛；泄露', lv: 'cet4' },
+  bicycle: { ph: '', cn: 'n.自行车', lv: 'cet4' },
+  bike: { ph: '', cn: 'n.自行车', lv: 'cet4' },
+  biology: { ph: '', cn: 'n.生物学', lv: 'cet4' },
+  birth: { ph: '', cn: 'n.出生', lv: 'cet4' },
+  birthday: { ph: '', cn: 'n.生日', lv: 'cet4' },
+  biscuit: { ph: '', cn: 'n.饼干', lv: 'cet4' },
+  bishop: { ph: '', cn: 'n.主教', lv: 'cet4' },
+  bitter: { ph: '', cn: 'a.苦的；痛苦的', lv: 'cet4' },
+  blade: { ph: '', cn: 'n.刀刃；叶片', lv: 'cet4' },
+  blank: { ph: '', cn: 'a.空白的 n.空白', lv: 'cet4' },
+  blanket: { ph: '', cn: 'n.毯子', lv: 'cet4' },
+  blast: { ph: '', cn: 'n./v.爆炸；冲击', lv: 'cet4' },
+  blaze: { ph: '', cn: 'n./v.火焰；熊熊燃烧', lv: 'cet4' },
+  bleed: { ph: '', cn: 'v.流血', lv: 'cet4' },
+  blend: { ph: '', cn: 'v./n.混合', lv: 'cet4' },
+  bless: { ph: '', cn: 'v.祝福', lv: 'cet4' },
+  bloody: { ph: '', cn: 'a.血腥的；流血的', lv: 'cet4' },
+  bloom: { ph: '', cn: 'v.开花；兴旺', lv: 'cet4' },
+  boast: { ph: '', cn: 'v.自夸；夸耀', lv: 'cet4' },
+  bold: { ph: '', cn: 'a.大胆的；醒目的', lv: 'cet4' },
+  bonus: { ph: '', cn: 'n.奖金；额外好处', lv: 'cet4' },
+  boom: { ph: '', cn: 'n./v.繁荣；迅速增长', lv: 'cet4' },
+  boost: { ph: '', cn: 'v./n.促进；提升', lv: 'cet4' },
+  boot: { ph: '', cn: 'n.靴子', lv: 'cet4' },
+  bounce: { ph: '', cn: 'v.弹起；反弹', lv: 'cet4' },
+  bound: { ph: '', cn: 'a.必然的；受约束的', lv: 'cet4' },
+  boundary: { ph: '', cn: 'n.边界', lv: 'cet4' },
+  bow: { ph: '', cn: 'v.鞠躬 n.弓；蝴蝶结', lv: 'cet4' },
+  bowl: { ph: '', cn: 'n.碗', lv: 'cet4' },
+  brake: { ph: '', cn: 'n./v.刹车', lv: 'cet4' },
+  brand: { ph: '', cn: 'n.品牌', lv: 'cet4' },
+  breakdown: { ph: '', cn: 'n.故障；崩溃', lv: 'cet4' },
+  breakthrough: { ph: '', cn: 'n.突破', lv: 'cet4' },
+  breast: { ph: '', cn: 'n.胸部；乳房', lv: 'cet4' },
+  breed: { ph: '', cn: 'v.繁殖 n.品种', lv: 'cet4' },
+  breeze: { ph: '', cn: 'n.微风', lv: 'cet4' },
+  brick: { ph: '', cn: 'n.砖', lv: 'cet4' },
+  briefly: { ph: '', cn: 'ad.简短地；暂时地', lv: 'cet4' },
+  brilliant: { ph: '', cn: 'a.杰出的；明亮的', lv: 'cet4' },
+  brochure: { ph: '', cn: 'n.小册子', lv: 'cet4' },
+  browser: { ph: '', cn: 'n.浏览器', lv: 'cet4' },
+  brush: { ph: '', cn: 'n./v.刷子；刷', lv: 'cet4' },
+  bubble: { ph: '', cn: 'n.气泡', lv: 'cet4' },
+  bucket: { ph: '', cn: 'n.桶', lv: 'cet4' },
+  bug: { ph: '', cn: 'n.小虫；程序错误', lv: 'cet4' },
+  bulk: { ph: '', cn: 'n.大部分；体积', lv: 'cet4' },
+  bullet: { ph: '', cn: 'n.子弹', lv: 'cet4' },
+  bunch: { ph: '', cn: 'n.串；束；一群', lv: 'cet4' },
+  bureau: { ph: '', cn: 'n.局；办事处', lv: 'cet4' },
+  bury: { ph: '', cn: 'v.埋葬；掩埋', lv: 'cet4' },
+  bush: { ph: '', cn: 'n.灌木', lv: 'cet4' },
+  butter: { ph: '', cn: 'n.黄油', lv: 'cet4' },
+  button: { ph: '', cn: 'n.按钮；纽扣', lv: 'cet4' },
+  buyer: { ph: '', cn: 'n.买方；购买者', lv: 'cet4' },
+  cab: { ph: '', cn: 'n.出租车', lv: 'cet4' },
+  cabin: { ph: '', cn: 'n.小木屋；机舱', lv: 'cet4' },
+  cabinet: { ph: '', cn: 'n.柜子；内阁', lv: 'cet4' },
+  cable: { ph: '', cn: 'n.电缆；有线电视', lv: 'cet4' },
+  cafe: { ph: '', cn: 'n.咖啡馆', lv: 'cet4' },
+  cage: { ph: '', cn: 'n.笼子', lv: 'cet4' },
+  cake: { ph: '', cn: 'n.蛋糕', lv: 'cet4' },
+  calculate: { ph: '', cn: 'v.计算；估算', lv: 'cet4' },
+  calculation: { ph: '', cn: 'n.计算', lv: 'cet4' },
+  calendar: { ph: '', cn: 'n.日历', lv: 'cet4' },
+  campus: { ph: '', cn: 'n.校园', lv: 'cet4' },
+  cancer: { ph: '', cn: 'n.癌症', lv: 'cet4' },
+  candidate: { ph: '', cn: 'n.候选人', lv: 'cet4' },
+  candle: { ph: '', cn: 'n.蜡烛', lv: 'cet4' },
+};
+
+const SUPPLEMENTAL_CET_BATCH2 = {
+  cap: { ph: '', cn: 'n.帽子；上限', lv: 'cet4' },
+  capable: { ph: '', cn: 'a.有能力的', lv: 'cet4' },
+  capacity: { ph: '', cn: 'n.容量；能力', lv: 'cet4' },
+  captain: { ph: '', cn: 'n.队长；船长', lv: 'cet4' },
+  carbon: { ph: '', cn: 'n.碳', lv: 'cet4' },
+  carefully: { ph: '', cn: 'ad.仔细地', lv: 'cet4' },
+  careless: { ph: '', cn: 'a.粗心的', lv: 'cet4' },
+  cargo: { ph: '', cn: 'n.货物', lv: 'cet4' },
+  carpenter: { ph: '', cn: 'n.木匠', lv: 'cet4' },
+  carpet: { ph: '', cn: 'n.地毯', lv: 'cet4' },
+  carriage: { ph: '', cn: 'n.马车；车厢', lv: 'cet4' },
+  carrier: { ph: '', cn: 'n.携带者；运输工具', lv: 'cet4' },
+  cart: { ph: '', cn: 'n.手推车', lv: 'cet4' },
+  cash: { ph: '', cn: 'n.现金', lv: 'cet4' },
+  cast: { ph: '', cn: 'v.投；抛 n.演员阵容', lv: 'cet4' },
+  casual: { ph: '', cn: 'a.随意的；偶然的', lv: 'cet4' },
+  catalog: { ph: '', cn: 'n.目录', lv: 'cet4' },
+  catalogue: { ph: '', cn: 'n.目录', lv: 'cet4' },
+  category: { ph: '', cn: 'n.类别', lv: 'cet4' },
+  cater: { ph: '', cn: 'v.迎合；承办餐饮', lv: 'cet4' },
+  cattle: { ph: '', cn: 'n.牛群', lv: 'cet4' },
+  caution: { ph: '', cn: 'n.谨慎；警告', lv: 'cet4' },
+  cautious: { ph: '', cn: 'a.谨慎的', lv: 'cet4' },
+  cave: { ph: '', cn: 'n.洞穴', lv: 'cet4' },
+  cease: { ph: '', cn: 'v.停止', lv: 'cet4' },
+  ceiling: { ph: '', cn: 'n.天花板；上限', lv: 'cet4' },
+  celebrate: { ph: '', cn: 'v.庆祝', lv: 'cet4' },
+  celebration: { ph: '', cn: 'n.庆祝活动', lv: 'cet4' },
+  cell: { ph: '', cn: 'n.细胞；小房间', lv: 'cet4' },
+  cent: { ph: '', cn: 'n.分（货币）', lv: 'cet4' },
+  ceremony: { ph: '', cn: 'n.仪式', lv: 'cet4' },
+  certainly: { ph: '', cn: 'ad.当然；肯定地', lv: 'cet4' },
+  certificate: { ph: '', cn: 'n.证书', lv: 'cet4' },
+  chairman: { ph: '', cn: 'n.主席', lv: 'cet4' },
+  chamber: { ph: '', cn: 'n.房间；会议厅', lv: 'cet4' },
+  champion: { ph: '', cn: 'n.冠军', lv: 'cet4' },
+  championship: { ph: '', cn: 'n.锦标赛', lv: 'cet4' },
+  channel: { ph: '', cn: 'n.渠道；频道', lv: 'cet4' },
+  chapter: { ph: '', cn: 'n.章；章节', lv: 'cet4' },
+  characteristic: { ph: '', cn: 'n.特征 a.典型的', lv: 'cet4' },
+  charity: { ph: '', cn: 'n.慈善；慈善机构', lv: 'cet4' },
+  charm: { ph: '', cn: 'n.魅力 v.吸引', lv: 'cet4' },
+  chart: { ph: '', cn: 'n.图表', lv: 'cet4' },
+  chase: { ph: '', cn: 'v.追赶', lv: 'cet4' },
+  chat: { ph: '', cn: 'v./n.闲聊', lv: 'cet4' },
+  cheat: { ph: '', cn: 'v.欺骗；作弊', lv: 'cet4' },
+  cheek: { ph: '', cn: 'n.脸颊', lv: 'cet4' },
+  cheer: { ph: '', cn: 'v.欢呼；鼓舞', lv: 'cet4' },
+  cheerful: { ph: '', cn: 'a.愉快的', lv: 'cet4' },
+  cheese: { ph: '', cn: 'n.奶酪', lv: 'cet4' },
+  chemical: { ph: '', cn: 'a.化学的 n.化学品', lv: 'cet4' },
+  chemistry: { ph: '', cn: 'n.化学', lv: 'cet4' },
+  chest: { ph: '', cn: 'n.胸部；箱子', lv: 'cet4' },
+  chicken: { ph: '', cn: 'n.鸡；鸡肉', lv: 'cet4' },
+  chief: { ph: '', cn: 'a.主要的 n.首领', lv: 'cet4' },
+  childhood: { ph: '', cn: 'n.童年', lv: 'cet4' },
+  chip: { ph: '', cn: 'n.芯片；碎片', lv: 'cet4' },
+  chocolate: { ph: '', cn: 'n.巧克力', lv: 'cet4' },
+  christmas: { ph: '', cn: 'n.圣诞节', lv: 'cet4' },
+  cigarette: { ph: '', cn: 'n.香烟', lv: 'cet4' },
+  cinema: { ph: '', cn: 'n.电影院', lv: 'cet4' },
+  circuit: { ph: '', cn: 'n.电路；环行', lv: 'cet4' },
+  circular: { ph: '', cn: 'a.圆形的；循环的', lv: 'cet4' },
+  circulate: { ph: '', cn: 'v.循环；流通', lv: 'cet4' },
+  cite: { ph: '', cn: 'v.引用', lv: 'cet4' },
+  civil: { ph: '', cn: 'a.公民的；民用的', lv: 'cet4' },
+  civilization: { ph: '', cn: 'n.文明', lv: 'cet4' },
+  clap: { ph: '', cn: 'v./n.鼓掌', lv: 'cet4' },
+  clarify: { ph: '', cn: 'v.澄清', lv: 'cet4' },
+  classic: { ph: '', cn: 'a.经典的 n.经典作品', lv: 'cet4' },
+  classical: { ph: '', cn: 'a.古典的；经典的', lv: 'cet4' },
+  classification: { ph: '', cn: 'n.分类', lv: 'cet4' },
+  classify: { ph: '', cn: 'v.分类', lv: 'cet4' },
+  classmate: { ph: '', cn: 'n.同学', lv: 'cet4' },
+  classroom: { ph: '', cn: 'n.教室', lv: 'cet4' },
+  clause: { ph: '', cn: 'n.条款；从句', lv: 'cet4' },
+  clearly: { ph: '', cn: 'ad.清楚地', lv: 'cet4' },
+  clerk: { ph: '', cn: 'n.职员；店员', lv: 'cet4' },
+  clever: { ph: '', cn: 'a.聪明的', lv: 'cet4' },
+  click: { ph: '', cn: 'v.点击 n.咔哒声', lv: 'cet4' },
+  client: { ph: '', cn: 'n.客户；委托人', lv: 'cet4' },
+  cliff: { ph: '', cn: 'n.悬崖', lv: 'cet4' },
+  cling: { ph: '', cn: 'v.紧抓；依附', lv: 'cet4' },
+  clinic: { ph: '', cn: 'n.诊所', lv: 'cet4' },
+  clinical: { ph: '', cn: 'a.临床的', lv: 'cet4' },
+  clip: { ph: '', cn: 'n.夹子；片段 v.剪', lv: 'cet4' },
+  clock: { ph: '', cn: 'n.钟', lv: 'cet4' },
+  clone: { ph: '', cn: 'n./v.克隆', lv: 'cet4' },
+  closely: { ph: '', cn: 'ad.紧密地；仔细地', lv: 'cet4' },
+  closet: { ph: '', cn: 'n.壁橱', lv: 'cet4' },
+  cloth: { ph: '', cn: 'n.布', lv: 'cet4' },
+  clothe: { ph: '', cn: 'v.给…穿衣', lv: 'cet4' },
+  clothing: { ph: '', cn: 'n.衣服', lv: 'cet4' },
+  cloud: { ph: '', cn: 'n.云', lv: 'cet4' },
+  clue: { ph: '', cn: 'n.线索', lv: 'cet4' },
+  cluster: { ph: '', cn: 'n.群；簇', lv: 'cet4' },
+  coat: { ph: '', cn: 'n.外套', lv: 'cet4' },
+  code: { ph: '', cn: 'n.代码；准则', lv: 'cet4' },
+  cognitive: { ph: '', cn: 'a.认知的', lv: 'cet4' },
+  coin: { ph: '', cn: 'n.硬币', lv: 'cet4' },
+  coincide: { ph: '', cn: 'v.同时发生；一致', lv: 'cet4' },
+  coincidence: { ph: '', cn: 'n.巧合', lv: 'cet4' },
+  collapse: { ph: '', cn: 'v./n.倒塌；崩溃', lv: 'cet4' },
+  colleague: { ph: '', cn: 'n.同事', lv: 'cet4' },
+  collection: { ph: '', cn: 'n.收集；收藏品', lv: 'cet4' },
+  collective: { ph: '', cn: 'a.集体的', lv: 'cet4' },
+  collision: { ph: '', cn: 'n.碰撞', lv: 'cet4' },
+  colonel: { ph: '', cn: 'n.上校', lv: 'cet4' },
+  colonial: { ph: '', cn: 'a.殖民地的', lv: 'cet4' },
+  colony: { ph: '', cn: 'n.殖民地', lv: 'cet4' },
+  colour: { ph: '', cn: 'n.颜色（英）', lv: 'cet4' },
+  column: { ph: '', cn: 'n.柱；栏', lv: 'cet4' },
+  combat: { ph: '', cn: 'n./v.战斗；斗争', lv: 'cet4' },
+  combination: { ph: '', cn: 'n.组合', lv: 'cet4' },
+  combine: { ph: '', cn: 'v.结合', lv: 'cet4' },
+  comedy: { ph: '', cn: 'n.喜剧', lv: 'cet4' },
+  comfortable: { ph: '', cn: 'a.舒适的', lv: 'cet4' },
+  commander: { ph: '', cn: 'n.指挥官', lv: 'cet4' },
+  commentary: { ph: '', cn: 'n.评论', lv: 'cet4' },
+  commercial: { ph: '', cn: 'a.商业的 n.广告', lv: 'cet4' },
+  commission: { ph: '', cn: 'n.委员会；佣金', lv: 'cet4' },
+  commitment: { ph: '', cn: 'n.承诺；投入', lv: 'cet4' },
+  commodity: { ph: '', cn: 'n.商品', lv: 'cet4' },
+  communication: { ph: '', cn: 'n.交流；通信', lv: 'cet4' },
+  communist: { ph: '', cn: 'n.共产主义者 a.共产主义的', lv: 'cet4' },
+  companion: { ph: '', cn: 'n.同伴', lv: 'cet4' },
+  comparative: { ph: '', cn: 'a.比较的', lv: 'cet4' },
+  comparison: { ph: '', cn: 'n.比较', lv: 'cet4' },
+  compel: { ph: '', cn: 'v.迫使', lv: 'cet4' },
+  compensate: { ph: '', cn: 'v.补偿', lv: 'cet4' },
+  compensation: { ph: '', cn: 'n.补偿；赔偿', lv: 'cet4' },
+  competent: { ph: '', cn: 'a.有能力的', lv: 'cet4' },
+  competitive: { ph: '', cn: 'a.有竞争力的', lv: 'cet4' },
+  competitor: { ph: '', cn: 'n.竞争者', lv: 'cet4' },
+  complaint: { ph: '', cn: 'n.抱怨；投诉', lv: 'cet4' },
+  complement: { ph: '', cn: 'n./v.补充', lv: 'cet4' },
+  completely: { ph: '', cn: 'ad.完全地', lv: 'cet4' },
+  complexity: { ph: '', cn: 'n.复杂性', lv: 'cet4' },
+  complicate: { ph: '', cn: 'v.使复杂化', lv: 'cet4' },
+  complicated: { ph: '', cn: 'a.复杂的', lv: 'cet4' },
+  complication: { ph: '', cn: 'n.复杂情况；并发症', lv: 'cet4' },
+  component: { ph: '', cn: 'n.组成部分', lv: 'cet4' },
+};
+
+const SUPPLEMENTAL_CET_BATCH3 = {
+  compose: { ph: '', cn: 'v.组成；作曲', lv: 'cet4' },
+  composer: { ph: '', cn: 'n.作曲家', lv: 'cet4' },
+  composition: { ph: '', cn: 'n.组成；作文', lv: 'cet4' },
+  comprise: { ph: '', cn: 'v.包含；由…组成', lv: 'cet4' },
+  compromise: { ph: '', cn: 'n./v.妥协', lv: 'cet4' },
+  conceal: { ph: '', cn: 'v.隐藏', lv: 'cet4' },
+  concentration: { ph: '', cn: 'n.集中；浓度', lv: 'cet4' },
+  concept: { ph: '', cn: 'n.概念', lv: 'cet4' },
+  concerned: { ph: '', cn: 'a.有关的；担心的', lv: 'cet4' },
+  concert: { ph: '', cn: 'n.音乐会', lv: 'cet4' },
+  conclude: { ph: '', cn: 'v.得出结论；结束', lv: 'cet4' },
+  conclusion: { ph: '', cn: 'n.结论', lv: 'cet4' },
+  concrete: { ph: '', cn: 'a.具体的 n.混凝土', lv: 'cet4' },
+  conductor: { ph: '', cn: 'n.指挥；导体', lv: 'cet4' },
+  confidential: { ph: '', cn: 'a.机密的', lv: 'cet4' },
+  confine: { ph: '', cn: 'v.限制', lv: 'cet4' },
+  confront: { ph: '', cn: 'v.面对；对抗', lv: 'cet4' },
+  confusion: { ph: '', cn: 'n.困惑；混乱', lv: 'cet4' },
+  congress: { ph: '', cn: 'n.国会；代表大会', lv: 'cet4' },
+  connection: { ph: '', cn: 'n.联系；连接', lv: 'cet4' },
+  conscience: { ph: '', cn: 'n.良心', lv: 'cet4' },
+  consciousness: { ph: '', cn: 'n.意识', lv: 'cet4' },
+  consensus: { ph: '', cn: 'n.共识', lv: 'cet4' },
+  consent: { ph: '', cn: 'n./v.同意', lv: 'cet4' },
+  consequence: { ph: '', cn: 'n.结果；后果', lv: 'cet4' },
+  consequent: { ph: '', cn: 'a.随之发生的', lv: 'cet4' },
+  consequently: { ph: '', cn: 'ad.因此', lv: 'cet4' },
+  conservation: { ph: '', cn: 'n.保护；保存', lv: 'cet4' },
+  considerable: { ph: '', cn: 'a.相当大的', lv: 'cet4' },
+  considerably: { ph: '', cn: 'ad.相当地', lv: 'cet4' },
+  consideration: { ph: '', cn: 'n.考虑；体谅', lv: 'cet4' },
+  consistent: { ph: '', cn: 'a.一致的', lv: 'cet4' },
+  constantly: { ph: '', cn: 'ad.不断地', lv: 'cet4' },
+  constitute: { ph: '', cn: 'v.构成', lv: 'cet4' },
+  constitution: { ph: '', cn: 'n.宪法；体质', lv: 'cet4' },
+  constitutional: { ph: '', cn: 'a.宪法的', lv: 'cet4' },
+  construction: { ph: '', cn: 'n.建设；建造', lv: 'cet4' },
+  consult: { ph: '', cn: 'v.咨询；请教', lv: 'cet4' },
+  consultant: { ph: '', cn: 'n.顾问', lv: 'cet4' },
+  consumer: { ph: '', cn: 'n.消费者', lv: 'cet4' },
+  consumption: { ph: '', cn: 'n.消费；消耗', lv: 'cet4' },
+  container: { ph: '', cn: 'n.容器', lv: 'cet4' },
+  contemporary: { ph: '', cn: 'a.当代的', lv: 'cet4' },
+  contest: { ph: '', cn: 'n.比赛；争论', lv: 'cet4' },
+  context: { ph: '', cn: 'n.语境；背景', lv: 'cet4' },
+  continent: { ph: '', cn: 'n.大陆', lv: 'cet4' },
+  continual: { ph: '', cn: 'a.持续的', lv: 'cet4' },
+  continuous: { ph: '', cn: 'a.连续的', lv: 'cet4' },
+  contradiction: { ph: '', cn: 'n.矛盾', lv: 'cet4' },
+  contrary: { ph: '', cn: 'a./n.相反的（事物）', lv: 'cet4' },
+  contrast: { ph: '', cn: 'n./v.对比', lv: 'cet4' },
+  contribution: { ph: '', cn: 'n.贡献', lv: 'cet4' },
+  controversial: { ph: '', cn: 'a.有争议的', lv: 'cet4' },
+  controversy: { ph: '', cn: 'n.争议', lv: 'cet4' },
+  convenience: { ph: '', cn: 'n.便利', lv: 'cet4' },
+  convention: { ph: '', cn: 'n.惯例；大会', lv: 'cet4' },
+  conventional: { ph: '', cn: 'a.传统的；常规的', lv: 'cet4' },
+  conversion: { ph: '', cn: 'n.转换', lv: 'cet4' },
+  convert: { ph: '', cn: 'v.转换；改变', lv: 'cet4' },
+  convey: { ph: '', cn: 'v.传达；运输', lv: 'cet4' },
+  convince: { ph: '', cn: 'v.说服', lv: 'cet4' },
+  cookie: { ph: '', cn: 'n.曲奇；浏览器Cookie', lv: 'cet4' },
+  cooperate: { ph: '', cn: 'v.合作', lv: 'cet4' },
+  cooperative: { ph: '', cn: 'a.合作的', lv: 'cet4' },
+  cope: { ph: '', cn: 'v.应对；处理', lv: 'cet4' },
+  core: { ph: '', cn: 'n.核心', lv: 'cet4' },
+  corn: { ph: '', cn: 'n.玉米', lv: 'cet4' },
+  corporate: { ph: '', cn: 'a.公司的', lv: 'cet4' },
+  corporation: { ph: '', cn: 'n.公司；法人', lv: 'cet4' },
+  correspond: { ph: '', cn: 'v.符合；通信', lv: 'cet4' },
+  correspondence: { ph: '', cn: 'n.通信；对应关系', lv: 'cet4' },
+  correspondent: { ph: '', cn: 'n.记者；通信者', lv: 'cet4' },
+  corresponding: { ph: '', cn: 'a.相应的', lv: 'cet4' },
+  corridor: { ph: '', cn: 'n.走廊', lv: 'cet4' },
+  corrupt: { ph: '', cn: 'a./v.腐败（的）；使腐败', lv: 'cet4' },
+  corruption: { ph: '', cn: 'n.腐败', lv: 'cet4' },
+  costly: { ph: '', cn: 'a.昂贵的；代价高的', lv: 'cet4' },
+  cottage: { ph: '', cn: 'n.小屋', lv: 'cet4' },
+  cotton: { ph: '', cn: 'n.棉花', lv: 'cet4' },
+  counter: { ph: '', cn: 'n.柜台；计数器', lv: 'cet4' },
+  countryside: { ph: '', cn: 'n.乡村', lv: 'cet4' },
+  county: { ph: '', cn: 'n.县', lv: 'cet4' },
+  courageous: { ph: '', cn: 'a.勇敢的', lv: 'cet4' },
+  cousin: { ph: '', cn: 'n.堂（表）兄弟姐妹', lv: 'cet4' },
+  coverage: { ph: '', cn: 'n.覆盖；报道', lv: 'cet4' },
+  crack: { ph: '', cn: 'n./v.裂缝；破裂', lv: 'cet4' },
+  craft: { ph: '', cn: 'n.工艺；手艺', lv: 'cet4' },
+  crash: { ph: '', cn: 'v./n.撞击；崩溃', lv: 'cet4' },
+  crazy: { ph: '', cn: 'a.疯狂的', lv: 'cet4' },
+  cream: { ph: '', cn: 'n.奶油', lv: 'cet4' },
+  creation: { ph: '', cn: 'n.创造；作品', lv: 'cet4' },
+  creative: { ph: '', cn: 'a.有创造力的', lv: 'cet4' },
+  credit: { ph: '', cn: 'n.信用；学分', lv: 'cet4' },
+  crew: { ph: '', cn: 'n.全体船员；机组', lv: 'cet4' },
+  criminal: { ph: '', cn: 'a.犯罪的 n.罪犯', lv: 'cet4' },
+  criteria: { ph: '', cn: 'n.标准（criterion复数）', lv: 'cet4' },
+  critic: { ph: '', cn: 'n.批评家', lv: 'cet4' },
+  criticism: { ph: '', cn: 'n.批评', lv: 'cet4' },
+  criticize: { ph: '', cn: 'v.批评', lv: 'cet4' },
+  crop: { ph: '', cn: 'n.庄稼', lv: 'cet4' },
+  crucial: { ph: '', cn: 'a.关键的', lv: 'cet4' },
+  cruel: { ph: '', cn: 'a.残忍的', lv: 'cet4' },
+  crush: { ph: '', cn: 'v.压碎；击垮', lv: 'cet4' },
+  cry: { ph: '', cn: 'v./n.哭；喊叫', lv: 'cet4' },
+  crystal: { ph: '', cn: 'n.水晶', lv: 'cet4' },
+  cultivate: { ph: '', cn: 'v.培养；耕作', lv: 'cet4' },
+  cultural: { ph: '', cn: 'a.文化的', lv: 'cet4' },
+  cure: { ph: '', cn: 'v./n.治愈', lv: 'cet4' },
+  curiosity: { ph: '', cn: 'n.好奇心', lv: 'cet4' },
+  curious: { ph: '', cn: 'a.好奇的', lv: 'cet4' },
+  currency: { ph: '', cn: 'n.货币', lv: 'cet4' },
+  currently: { ph: '', cn: 'ad.目前', lv: 'cet4' },
+  curriculum: { ph: '', cn: 'n.课程', lv: 'cet4' },
+  curse: { ph: '', cn: 'n./v.诅咒', lv: 'cet4' },
+  curtain: { ph: '', cn: 'n.窗帘', lv: 'cet4' },
+  curve: { ph: '', cn: 'n./v.曲线；弯曲', lv: 'cet4' },
+  custom: { ph: '', cn: 'n.习俗；海关', lv: 'cet4' },
+  cycle: { ph: '', cn: 'n.循环；周期', lv: 'cet4' },
+  dad: { ph: '', cn: 'n.爸爸', lv: 'cet4' },
+  dairy: { ph: '', cn: 'n.乳制品业 a.乳制品的', lv: 'cet4' },
+};
+
+const SUPPLEMENTAL_CET_BATCH4 = {
+  damp: { ph: '', cn: 'a.潮湿的 n.潮气', lv: 'cet4' },
+  dare: { ph: '', cn: 'v.敢；胆敢', lv: 'cet4' },
+  darkness: { ph: '', cn: 'n.黑暗', lv: 'cet4' },
+  database: { ph: '', cn: 'n.数据库', lv: 'cet4' },
+  dawn: { ph: '', cn: 'n.黎明', lv: 'cet4' },
+  deadline: { ph: '', cn: 'n.最后期限', lv: 'cet4' },
+  deaf: { ph: '', cn: 'a.聋的', lv: 'cet4' },
+  debt: { ph: '', cn: 'n.债务', lv: 'cet4' },
+  decay: { ph: '', cn: 'v./n.腐烂；衰败', lv: 'cet4' },
+  decent: { ph: '', cn: 'a.得体的；像样的', lv: 'cet4' },
+  deck: { ph: '', cn: 'n.甲板', lv: 'cet4' },
+  declaration: { ph: '', cn: 'n.声明', lv: 'cet4' },
+  decline: { ph: '', cn: 'v./n.下降；衰退', lv: 'cet4' },
+  decoration: { ph: '', cn: 'n.装饰', lv: 'cet4' },
+  decrease: { ph: '', cn: 'v./n.减少', lv: 'cet4' },
+  dedicate: { ph: '', cn: 'v.奉献；致力于', lv: 'cet4' },
+  deed: { ph: '', cn: 'n.行为；契约', lv: 'cet4' },
+  deem: { ph: '', cn: 'v.认为', lv: 'cet4' },
+  deeply: { ph: '', cn: 'ad.深深地', lv: 'cet4' },
+  deer: { ph: '', cn: 'n.鹿', lv: 'cet4' },
+  defect: { ph: '', cn: 'n.缺陷', lv: 'cet4' },
+  defend: { ph: '', cn: 'v.保卫；辩护', lv: 'cet4' },
+  defendant: { ph: '', cn: 'n.被告', lv: 'cet4' },
+  defense: { ph: '', cn: 'n.防御；辩护', lv: 'cet4' },
+  defensive: { ph: '', cn: 'a.防御性的', lv: 'cet4' },
+  deficit: { ph: '', cn: 'n.赤字；不足', lv: 'cet4' },
+  define: { ph: '', cn: 'v.定义；界定', lv: 'cet4' },
+  definite: { ph: '', cn: 'a.明确的', lv: 'cet4' },
+  definitely: { ph: '', cn: 'ad.肯定地', lv: 'cet4' },
+  definition: { ph: '', cn: 'n.定义', lv: 'cet4' },
+  delegate: { ph: '', cn: 'n.代表 v.委派', lv: 'cet4' },
+  delegation: { ph: '', cn: 'n.代表团', lv: 'cet4' },
+  deliberate: { ph: '', cn: 'a.深思熟虑的 v.仔细考虑', lv: 'cet4' },
+  deliberately: { ph: '', cn: 'ad.故意地', lv: 'cet4' },
+  delicate: { ph: '', cn: 'a.精致的；脆弱的', lv: 'cet4' },
+  delicious: { ph: '', cn: 'a.美味的', lv: 'cet4' },
+  delight: { ph: '', cn: 'n./v.高兴；使高兴', lv: 'cet4' },
+  delivery: { ph: '', cn: 'n.递送；分娩', lv: 'cet4' },
+  democracy: { ph: '', cn: 'n.民主', lv: 'cet4' },
+  democratic: { ph: '', cn: 'a.民主的', lv: 'cet4' },
+  demonstrate: { ph: '', cn: 'v.证明；演示', lv: 'cet4' },
+  demonstration: { ph: '', cn: 'n.示范；示威', lv: 'cet4' },
+  denial: { ph: '', cn: 'n.否认', lv: 'cet4' },
+  dense: { ph: '', cn: 'a.稠密的', lv: 'cet4' },
+  deny: { ph: '', cn: 'v.否认；拒绝', lv: 'cet4' },
+  depart: { ph: '', cn: 'v.离开；出发', lv: 'cet4' },
+  departure: { ph: '', cn: 'n.离开；出发', lv: 'cet4' },
+  dependent: { ph: '', cn: 'a.依赖的 n.受抚养者', lv: 'cet4' },
+  depress: { ph: '', cn: 'v.使沮丧；压低', lv: 'cet4' },
+  depression: { ph: '', cn: 'n.抑郁；萧条', lv: 'cet4' },
+  deprive: { ph: '', cn: 'v.剥夺', lv: 'cet4' },
+  depth: { ph: '', cn: 'n.深度', lv: 'cet4' },
+  deputy: { ph: '', cn: 'n.副职；代表', lv: 'cet4' },
+  derive: { ph: '', cn: 'v.得到；源于', lv: 'cet4' },
+  description: { ph: '', cn: 'n.描述', lv: 'cet4' },
+  desert: { ph: '', cn: 'n.沙漠 v.抛弃', lv: 'cet4' },
+  deserve: { ph: '', cn: 'v.应得', lv: 'cet4' },
+  designate: { ph: '', cn: 'v.指定', lv: 'cet4' },
+  designer: { ph: '', cn: 'n.设计师', lv: 'cet4' },
+  desirable: { ph: '', cn: 'a.值得要的；理想的', lv: 'cet4' },
+  desk: { ph: '', cn: 'n.书桌', lv: 'cet4' },
+  despair: { ph: '', cn: 'n./v.绝望', lv: 'cet4' },
+  desperate: { ph: '', cn: 'a.绝望的；不顾一切的', lv: 'cet4' },
+  desperately: { ph: '', cn: 'ad.绝望地；非常', lv: 'cet4' },
+  despite: { ph: '', cn: 'prep.尽管', lv: 'cet4' },
+  destination: { ph: '', cn: 'n.目的地', lv: 'cet4' },
+  destiny: { ph: '', cn: 'n.命运', lv: 'cet4' },
+  destruction: { ph: '', cn: 'n.破坏', lv: 'cet4' },
+  detailed: { ph: '', cn: 'a.详细的', lv: 'cet4' },
+  detect: { ph: '', cn: 'v.发现；侦测', lv: 'cet4' },
+  detective: { ph: '', cn: 'n.侦探', lv: 'cet4' },
+  determination: { ph: '', cn: 'n.决心', lv: 'cet4' },
+  developer: { ph: '', cn: 'n.开发者', lv: 'cet4' },
+  devil: { ph: '', cn: 'n.魔鬼', lv: 'cet4' },
+  devote: { ph: '', cn: 'v.奉献；专注于', lv: 'cet4' },
+  dialogue: { ph: '', cn: 'n.对话', lv: 'cet4' },
+  diamond: { ph: '', cn: 'n.钻石', lv: 'cet4' },
+  diary: { ph: '', cn: 'n.日记', lv: 'cet4' },
+  dictate: { ph: '', cn: 'v.口述；支配', lv: 'cet4' },
+  dictionary: { ph: '', cn: 'n.词典', lv: 'cet4' },
+  diet: { ph: '', cn: 'n.饮食；节食', lv: 'cet4' },
+  differ: { ph: '', cn: 'v.不同；有分歧', lv: 'cet4' },
+  differently: { ph: '', cn: 'ad.不同地', lv: 'cet4' },
+  digital: { ph: '', cn: 'a.数字的', lv: 'cet4' },
+  dignity: { ph: '', cn: 'n.尊严', lv: 'cet4' },
+  dilemma: { ph: '', cn: 'n.两难境地', lv: 'cet4' },
+  dimension: { ph: '', cn: 'n.维度；方面', lv: 'cet4' },
+  diminish: { ph: '', cn: 'v.减少；缩小', lv: 'cet4' },
+  dioxide: { ph: '', cn: 'n.二氧化物', lv: 'cet4' },
+  dip: { ph: '', cn: 'v.浸；下降 n.蘸酱', lv: 'cet4' },
+  diplomat: { ph: '', cn: 'n.外交官', lv: 'cet4' },
+  diplomatic: { ph: '', cn: 'a.外交的', lv: 'cet4' },
+  directory: { ph: '', cn: 'n.目录', lv: 'cet4' },
+  dirty: { ph: '', cn: 'a.脏的', lv: 'cet4' },
+  disability: { ph: '', cn: 'n.残疾；无能', lv: 'cet4' },
+  disabled: { ph: '', cn: 'a.残障的', lv: 'cet4' },
+  disadvantage: { ph: '', cn: 'n.不利条件', lv: 'cet4' },
+  disagree: { ph: '', cn: 'v.不同意', lv: 'cet4' },
+  disappear: { ph: '', cn: 'v.消失', lv: 'cet4' },
+  disappoint: { ph: '', cn: 'v.使失望', lv: 'cet4' },
+  disappointment: { ph: '', cn: 'n.失望', lv: 'cet4' },
+  disaster: { ph: '', cn: 'n.灾难', lv: 'cet4' },
+  discipline: { ph: '', cn: 'n.纪律；学科', lv: 'cet4' },
+  disclose: { ph: '', cn: 'v.披露', lv: 'cet4' },
+  discount: { ph: '', cn: 'n.折扣 v.打折', lv: 'cet4' },
+  discourse: { ph: '', cn: 'n.论述；话语', lv: 'cet4' },
+  discovery: { ph: '', cn: 'n.发现', lv: 'cet4' },
+  discrimination: { ph: '', cn: 'n.歧视；辨别', lv: 'cet4' },
+  dish: { ph: '', cn: 'n.盘子；菜肴', lv: 'cet4' },
+  dismiss: { ph: '', cn: 'v.解散；不予考虑', lv: 'cet4' },
+  disorder: { ph: '', cn: 'n.混乱；失调', lv: 'cet4' },
+  display: { ph: '', cn: 'v./n.展示', lv: 'cet4' },
+  disposal: { ph: '', cn: 'n.处理；处置权', lv: 'cet4' },
+  dispose: { ph: '', cn: 'v.处理；安排', lv: 'cet4' },
+  dispute: { ph: '', cn: 'n./v.争论', lv: 'cet4' },
+  dissolve: { ph: '', cn: 'v.溶解；解散', lv: 'cet4' },
+  distinct: { ph: '', cn: 'a.明显不同的', lv: 'cet4' },
+  distinction: { ph: '', cn: 'n.区别；荣誉', lv: 'cet4' },
+  distinguish: { ph: '', cn: 'v.区分；辨别', lv: 'cet4' },
+  distribute: { ph: '', cn: 'v.分发；分布', lv: 'cet4' },
+  distribution: { ph: '', cn: 'n.分配；分布', lv: 'cet4' },
+  disturb: { ph: '', cn: 'v.打扰；扰乱', lv: 'cet4' },
+  dive: { ph: '', cn: 'v.潜水', lv: 'cet4' },
+  diverse: { ph: '', cn: 'a.多样的', lv: 'cet4' },
+  diversity: { ph: '', cn: 'n.多样性', lv: 'cet4' },
+  division: { ph: '', cn: 'n.分开；部门', lv: 'cet4' },
+  divorce: { ph: '', cn: 'n./v.离婚', lv: 'cet4' },
+  doctrine: { ph: '', cn: 'n.教义；学说', lv: 'cet4' },
+  documentary: { ph: '', cn: 'n.纪录片', lv: 'cet4' },
+  domain: { ph: '', cn: 'n.领域；域名', lv: 'cet4' },
+  domestic: { ph: '', cn: 'a.国内的；家庭的', lv: 'cet4' },
+  dominant: { ph: '', cn: 'a.主导的', lv: 'cet4' },
+  dominate: { ph: '', cn: 'v.支配；主导', lv: 'cet4' },
+  donate: { ph: '', cn: 'v.捐赠', lv: 'cet4' },
+  donation: { ph: '', cn: 'n.捐赠', lv: 'cet4' },
+  dose: { ph: '', cn: 'n.剂量', lv: 'cet4' },
+  dot: { ph: '', cn: 'n.点', lv: 'cet4' },
+  download: { ph: '', cn: 'v./n.下载', lv: 'cet4' },
+  downtown: { ph: '', cn: 'ad./a.市中心（的）', lv: 'cet4' },
+  draft: { ph: '', cn: 'n.草稿 v.起草', lv: 'cet4' },
+  drag: { ph: '', cn: 'v.拖拽', lv: 'cet4' },
+  drain: { ph: '', cn: 'v.排水；耗尽', lv: 'cet4' },
+  drama: { ph: '', cn: 'n.戏剧', lv: 'cet4' },
+  dramatic: { ph: '', cn: 'a.戏剧性的', lv: 'cet4' },
+  dramatically: { ph: '', cn: 'ad.显著地；戏剧性地', lv: 'cet4' },
+  drawer: { ph: '', cn: 'n.抽屉', lv: 'cet4' },
+  drawing: { ph: '', cn: 'n.图画；绘画', lv: 'cet4' },
+  drift: { ph: '', cn: 'v./n.漂移', lv: 'cet4' },
+  drill: { ph: '', cn: 'n.训练；钻头 v.钻孔', lv: 'cet4' },
+  driver: { ph: '', cn: 'n.司机', lv: 'cet4' },
+  drum: { ph: '', cn: 'n.鼓', lv: 'cet4' },
+  drunk: { ph: '', cn: 'a.醉的', lv: 'cet4' },
+  due: { ph: '', cn: 'a.到期的；应有的', lv: 'cet4' },
+  dull: { ph: '', cn: 'a.乏味的；迟钝的', lv: 'cet4' },
+  dumb: { ph: '', cn: 'a.哑的；愚笨的', lv: 'cet4' },
+  dump: { ph: '', cn: 'v.倾倒 n.垃圾场', lv: 'cet4' },
+  duration: { ph: '', cn: 'n.持续时间', lv: 'cet4' },
+  dust: { ph: '', cn: 'n.灰尘', lv: 'cet4' },
+  dynamic: { ph: '', cn: 'a.动态的；有活力的', lv: 'cet4' },
+  eager: { ph: '', cn: 'a.渴望的', lv: 'cet4' },
+  earning: { ph: '', cn: 'n.收入', lv: 'cet4' },
+  ease: { ph: '', cn: 'n./v.轻松；缓解', lv: 'cet4' },
+  eastern: { ph: '', cn: 'a.东方的', lv: 'cet4' },
+  echo: { ph: '', cn: 'n./v.回声；回响', lv: 'cet4' },
+  economic: { ph: '', cn: 'a.经济的', lv: 'cet4' },
+  economical: { ph: '', cn: 'a.节约的；经济实惠的', lv: 'cet4' },
+  economics: { ph: '', cn: 'n.经济学', lv: 'cet4' },
+  economist: { ph: '', cn: 'n.经济学家', lv: 'cet4' },
+  edit: { ph: '', cn: 'v.编辑', lv: 'cet4' },
+  edition: { ph: '', cn: 'n.版本；版次', lv: 'cet4' },
+  editor: { ph: '', cn: 'n.编辑', lv: 'cet4' },
+  educate: { ph: '', cn: 'v.教育', lv: 'cet4' },
+  educational: { ph: '', cn: 'a.教育的', lv: 'cet4' },
+  educator: { ph: '', cn: 'n.教育工作者', lv: 'cet4' },
+  effectively: { ph: '', cn: 'ad.有效地', lv: 'cet4' },
+  efficiency: { ph: '', cn: 'n.效率', lv: 'cet4' },
+  efficient: { ph: '', cn: 'a.高效的', lv: 'cet4' },
+  elaborate: { ph: '', cn: 'a.精心制作的 v.详细阐述', lv: 'cet4' },
+  elderly: { ph: '', cn: 'a.年长的', lv: 'cet4' },
+  elect: { ph: '', cn: 'v.选举', lv: 'cet4' },
+  electrical: { ph: '', cn: 'a.电的；电气的', lv: 'cet4' },
+  electricity: { ph: '', cn: 'n.电', lv: 'cet4' },
+  electron: { ph: '', cn: 'n.电子', lv: 'cet4' },
+  electronic: { ph: '', cn: 'a.电子的', lv: 'cet4' },
+  elegant: { ph: '', cn: 'a.优雅的', lv: 'cet4' },
+  eliminate: { ph: '', cn: 'v.消除', lv: 'cet4' },
+  elite: { ph: '', cn: 'n.精英', lv: 'cet4' },
+  elsewhere: { ph: '', cn: 'ad.在别处', lv: 'cet4' },
+  email: { ph: '', cn: 'n./v.电子邮件（发邮件）', lv: 'cet4' },
+  embark: { ph: '', cn: 'v.上船；着手', lv: 'cet4' },
+  embarrass: { ph: '', cn: 'v.使尴尬', lv: 'cet4' },
+  embrace: { ph: '', cn: 'v.拥抱；欣然接受', lv: 'cet4' },
+  emerge: { ph: '', cn: 'v.出现', lv: 'cet4' },
+  emergence: { ph: '', cn: 'n.出现；涌现', lv: 'cet4' },
+  emission: { ph: '', cn: 'n.排放', lv: 'cet4' },
+  emotional: { ph: '', cn: 'a.情绪的；情感的', lv: 'cet4' },
+  emperor: { ph: '', cn: 'n.皇帝', lv: 'cet4' },
+  emphasis: { ph: '', cn: 'n.强调', lv: 'cet4' },
+  emphasize: { ph: '', cn: 'v.强调', lv: 'cet4' },
+  empire: { ph: '', cn: 'n.帝国', lv: 'cet4' },
+  employee: { ph: '', cn: 'n.雇员', lv: 'cet4' },
+  employer: { ph: '', cn: 'n.雇主', lv: 'cet4' },
+  employment: { ph: '', cn: 'n.就业；工作', lv: 'cet4' },
+  empower: { ph: '', cn: 'v.授权；使能够', lv: 'cet4' },
+};
+
+for (const [word, entry] of Object.entries({ ...SUPPLEMENTAL_CET_CORE, ...SUPPLEMENTAL_CET_BATCH2, ...SUPPLEMENTAL_CET_BATCH3, ...SUPPLEMENTAL_CET_BATCH4 })) {
+  if (!DICT[word]) {
+    DICT[word] = entry;
+  }
+}
+
+// 自动补齐：确保目标词表在词典中至少有占位条目，避免出现“纲内词无释义”
+function hydrateBasePlaceholders() {
   try {
-    const { CET4_WORDS, CET6_ALL } = require('./cetWords');
+    const { CET4_WORDS, CET6_ALL, GAOKAO_NATIONAL_WORDS } = require('./cetWords');
     const allCETWords = new Set([...CET4_WORDS, ...CET6_ALL]);
+    const allGaokaoWords = new Set([...(GAOKAO_NATIONAL_WORDS || [])]);
 
     allCETWords.forEach((word) => {
       if (DICT[word]) return;
@@ -1893,10 +2500,57 @@ function hydrateCETPlaceholders() {
         lv: CET4_WORDS.has(word) ? 'cet4' : 'cet6',
       };
     });
+
+    allGaokaoWords.forEach((word) => {
+      if (DICT[word]) return;
+      DICT[word] = {
+        ph: '',
+        cn: `${word}（高考课标词，释义补充中）`,
+        lv: 'gaokao',
+      };
+    });
   } catch {}
 }
 
-hydrateCETPlaceholders();
+hydrateBasePlaceholders();
+
+const TARGET_LEVEL_DICT_SCOPE = {
+  none: ['cet6', 'cet4'],
+  gaokao_national: ['gaokao', 'cet4', 'cet6'],
+  cet4: ['cet4'],
+  cet6: ['cet6', 'cet4'],
+  tem4: ['cet6', 'cet4'],
+  tem8: ['cet6', 'cet4'],
+  toefl: ['cet6', 'cet4'],
+  ielts: ['cet6', 'cet4'],
+  cambridge: ['cet6', 'cet4'],
+};
+
+function getAllowedDictLevels(targetLevel) {
+  const baseLevel = resolveTargetBaseLevel(targetLevel);
+  return TARGET_LEVEL_DICT_SCOPE[baseLevel] || TARGET_LEVEL_DICT_SCOPE.none;
+}
+
+function pickEntryByLevels(rawEntry, allowedLevels) {
+  if (!rawEntry || typeof rawEntry !== 'object') return null;
+
+  // 兼容未来扩展：同一单词可按等级维护不同释义
+  if (rawEntry.variants && typeof rawEntry.variants === 'object') {
+    for (const level of allowedLevels) {
+      const v = rawEntry.variants[level];
+      if (v && typeof v === 'object') {
+        return { entry: { ...v, lv: level }, matchedLevel: level };
+      }
+    }
+    return null;
+  }
+
+  const lv = String(rawEntry.lv || '').toLowerCase();
+  if (allowedLevels.includes(lv)) {
+    return { entry: rawEntry, matchedLevel: lv };
+  }
+  return null;
+}
 
 /**
  * 查询单词的大纲词典信息（含词形还原查找）
@@ -1904,21 +2558,53 @@ hydrateCETPlaceholders();
  * @returns {{ ph: string, cn: string, lv: string }|null}
  */
 function lookupDict(word) {
-  const w = word.toLowerCase().trim();
-
-  // 直接查找
-  if (DICT[w]) return DICT[w];
-
-  // 尝试词形还原后查找
-  try {
-    const { getWordMorphInfo } = require('./cetWords');
-    const morph = getWordMorphInfo(w);
-    if (morph.lemma && DICT[morph.lemma]) {
-      return DICT[morph.lemma];
-    }
-  } catch {}
-
-  return null;
+  const result = lookupDictByTargetLevel(word, 'none');
+  return result.entry;
 }
 
-module.exports = { DICT, lookupDict };
+/**
+ * 按目标等级查询词典释义（避免不同等级词义混用）
+ * @param {string} word
+ * @param {string} targetLevel
+ * @param {{ lemma?: string }} [options]
+ * @returns {{ entry: { ph: string, cn: string, lv: string }|null, fromLemma: boolean, directHit: boolean, matchedLevel: string|null }}
+ */
+function lookupDictByTargetLevel(word, targetLevel, options = {}) {
+  const w = String(word || '').toLowerCase().trim();
+  if (!w) {
+    return { entry: null, fromLemma: false, directHit: false, matchedLevel: null };
+  }
+
+  const allowedLevels = getAllowedDictLevels(targetLevel);
+  const candidates = [{ token: w, fromLemma: false }];
+
+  const providedLemma = String(options.lemma || '').toLowerCase().trim();
+  if (providedLemma && providedLemma !== w) {
+    candidates.push({ token: providedLemma, fromLemma: true });
+  } else {
+    try {
+      const { getWordMorphInfo } = require('./cetWords');
+      const morph = getWordMorphInfo(w);
+      const lemma = String(morph?.lemma || '').toLowerCase().trim();
+      if (lemma && lemma !== w) {
+        candidates.push({ token: lemma, fromLemma: true });
+      }
+    } catch {}
+  }
+
+  for (const candidate of candidates) {
+    const rawEntry = DICT[candidate.token];
+    const picked = pickEntryByLevels(rawEntry, allowedLevels);
+    if (!picked) continue;
+    return {
+      entry: picked.entry,
+      fromLemma: candidate.fromLemma,
+      directHit: !candidate.fromLemma,
+      matchedLevel: picked.matchedLevel,
+    };
+  }
+
+  return { entry: null, fromLemma: false, directHit: false, matchedLevel: null };
+}
+
+module.exports = { DICT, lookupDict, lookupDictByTargetLevel };

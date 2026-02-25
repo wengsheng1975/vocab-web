@@ -6,7 +6,6 @@
  *   B1 (~500词): 中级词汇
  *   B2+ 以上的词不在此列表中，视为进阶/高级词汇
  */
-
 // A1 级别：最基础的500个高频词
 const A1_WORDS = new Set([
   'a','about','above','after','again','all','also','am','an','and','any','are',
@@ -242,4 +241,11 @@ function getAllCommonWords() {
   return new Set([...A1_WORDS, ...A2_WORDS, ...B1_WORDS]);
 }
 
-module.exports = { getWordLevel, isCommonWord, getAllCommonWords, A1_WORDS, A2_WORDS, B1_WORDS };
+module.exports = {
+  getWordLevel,
+  isCommonWord,
+  getAllCommonWords,
+  A1_WORDS,
+  A2_WORDS,
+  B1_WORDS,
+};

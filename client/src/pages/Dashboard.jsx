@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { statsAPI, articlesAPI, authAPI } from '../api'
@@ -11,14 +11,25 @@ import AnimatedContent from '../components/reactbits/AnimatedContent'
 import Aurora from '../components/reactbits/Aurora'
 import ShinyText from '../components/reactbits/ShinyText'
 import CountUp from '../components/reactbits/CountUp'
+import {
+  TARGET_LEVEL_GROUPS,
+  TARGET_LEVEL_TO_GROUP,
+  normalizeTargetLevel,
+  toLegacyTargetLevel,
+} from '../constants/targetLevels'
 
 function Dashboard() {
   const { standalone } = useAuth()
   const [data, setData] = useState(null)
   const [reviewSuggestions, setReviewSuggestions] = useState([])
   const [unfinished, setUnfinished] = useState([])
+  const [targetGroup, setTargetGroup] = useState('none')
   const [targetLevel, setTargetLevel] = useState('none')
+  const [targetMenuOpen, setTargetMenuOpen] = useState(false)
+  const [hoverGroup, setHoverGroup] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [resettingEvaluation, setResettingEvaluation] = useState(false)
+  const targetMenuRef = useRef(null)
 
   useEffect(() => { loadData() }, [])
 
@@ -35,7 +46,13 @@ function Dashboard() {
       const existingArticleIds = new Set((articlesRes.data?.articles || []).map((a) => a.id))
       const safeUnfinished = (unfinishedRes.data?.unfinished || []).filter((a) => existingArticleIds.has(a.id))
       setUnfinished(safeUnfinished)
-      setTargetLevel(overviewRes.data?.user?.target_level || 'none')
+      const nextTargetLevel = normalizeTargetLevel(
+        overviewRes.data?.user?.targetLevel || overviewRes.data?.user?.target_level || 'none'
+      )
+      const nextGroup = TARGET_LEVEL_TO_GROUP[nextTargetLevel] || 'none'
+      setTargetLevel(nextTargetLevel)
+      setTargetGroup(nextGroup)
+      setHoverGroup(null)
     } catch (err) {
       console.error('加载数据失败:', err)
     } finally {
@@ -43,19 +60,138 @@ function Dashboard() {
     }
   }
 
+  const handleResetEvaluation = async () => {
+    const confirmed = window.confirm('重新评估后，当前 CEFR 会重置为 A1，后续将基于新的阅读记录重新评估。是否继续？')
+    if (!confirmed) return
+    setResettingEvaluation(true)
+    try {
+      await authAPI.resetEvaluation()
+      await loadData()
+    } catch (err) {
+      console.error('重新评估失败:', err)
+      window.alert('重新评估失败，请稍后重试')
+    } finally {
+      setResettingEvaluation(false)
+    }
+  }
+
+  const handleTargetLevelPick = async (group, newLevel) => {
+    const normalizedNewLevel = normalizeTargetLevel(newLevel)
+    const prevLevel = targetLevel
+    const prevGroup = targetGroup
+    setTargetGroup(group)
+    setTargetLevel(normalizedNewLevel)
+    setHoverGroup(null)
+    setTargetMenuOpen(false)
+    try {
+      let saveRes
+      try {
+        saveRes = await authAPI.setTargetLevel(normalizedNewLevel)
+      } catch (err) {
+        const fallbackLegacyValue = toLegacyTargetLevel(normalizedNewLevel)
+        if (!fallbackLegacyValue || fallbackLegacyValue === normalizedNewLevel) throw err
+        saveRes = await authAPI.setTargetLevel(fallbackLegacyValue)
+      }
+
+      const savedLevel = normalizeTargetLevel(saveRes?.data?.targetLevel || normalizedNewLevel)
+      const savedGroup = TARGET_LEVEL_TO_GROUP[savedLevel] || 'none'
+      setTargetLevel(savedLevel)
+      setTargetGroup(savedGroup)
+      const changedAt = Date.now()
+      localStorage.setItem('targetLevel', savedLevel)
+      localStorage.setItem('targetLevelChangedAt', String(changedAt))
+      window.dispatchEvent(new CustomEvent('target-level-changed', { detail: { targetLevel: savedLevel, changedAt } }))
+    } catch (err) {
+      console.error('设置目标等级失败:', err)
+      setTargetGroup(prevGroup)
+      setTargetLevel(prevLevel)
+      window.alert('期望等级保存失败，请稍后重试')
+    }
+  }
+
+  const targetGroupMap = useMemo(() => (
+    TARGET_LEVEL_GROUPS.reduce((acc, group) => {
+      acc[group.group] = group
+      return acc
+    }, {})
+  ), [])
+
+  const menuGroups = useMemo(
+    () => TARGET_LEVEL_GROUPS.filter((group) => group.group !== 'none'),
+    []
+  )
+
+  const targetOptionMap = useMemo(() => (
+    TARGET_LEVEL_GROUPS.reduce((acc, group) => {
+      group.options.forEach((option) => {
+        acc[option.value] = { ...option, group: group.group, groupLabel: group.label }
+      })
+      return acc
+    }, {})
+  ), [])
+
+  const activeHoverGroup = hoverGroup && targetGroupMap[hoverGroup] ? hoverGroup : null
+  const hoverOptions = useMemo(() => {
+    if (!activeHoverGroup) return []
+    return targetGroupMap[activeHoverGroup]?.options || []
+  }, [activeHoverGroup, targetGroupMap])
+  const orderedHoverOptions = useMemo(
+    () => {
+      const levelOrder = { a1: 1, a2: 2, b1: 3, b2: 4, c1: 5, c2: 6 }
+      const getRank = (value) => {
+        const raw = String(value || '')
+        const level = raw.split('_').pop()
+        return levelOrder[level] || 0
+      }
+      return [...hoverOptions].sort((a, b) => getRank(b.value) - getRank(a.value))
+    },
+    [hoverOptions]
+  )
+  const activeHoverIndex = activeHoverGroup
+    ? menuGroups.findIndex((group) => group.group === activeHoverGroup)
+    : -1
+  const menuRowHeight = 34
+  const menuPaddingY = 6
+  const submenuTop = useMemo(() => {
+    if (activeHoverIndex < 0) return menuPaddingY
+    const optionCount = Math.max(1, orderedHoverOptions.length)
+    const idealTop = menuPaddingY + activeHoverIndex * menuRowHeight - ((optionCount - 1) * menuRowHeight) / 2
+    return Math.max(4, idealTop)
+  }, [activeHoverIndex, orderedHoverOptions.length])
+  const selectedTarget = targetOptionMap[targetLevel]
+    || { label: '未设定', group: 'none', groupLabel: '未设定' }
+  const targetDisplayLabel = selectedTarget.group === 'none' ? '未设定' : selectedTarget.groupLabel
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (!targetMenuRef.current) return
+      if (!targetMenuRef.current.contains(event.target)) {
+        setTargetMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [])
+
   if (loading) return <LoadingSpinner />
 
   return (
     <div className="space-y-8">
-      <AnimatedContent distance={22} duration={0.55}>
-        <section className="hero-panel relative overflow-hidden rounded-[1.75rem] border border-primary-300/40 px-5 py-6 sm:px-8 sm:py-9">
-          <Aurora
-            colorStops={['#158271', '#43b9a8', '#f97316', '#124f47']}
-            speed={10}
-            blur={90}
-            opacity={0.38}
-            size={66}
-          />
+      <AnimatedContent
+        distance={22}
+        duration={0.55}
+        className={targetMenuOpen ? 'relative z-[240]' : 'relative z-10'}
+      >
+        <section className={`hero-panel relative overflow-visible rounded-[1.75rem] border border-primary-300/40 px-5 py-6 sm:px-8 sm:py-9 ${targetMenuOpen ? 'z-[120]' : 'z-20'}`}>
+          <div className="absolute inset-0 overflow-hidden rounded-[1.75rem] pointer-events-none">
+            <Aurora
+              colorStops={['#158271', '#43b9a8', '#f97316', '#124f47']}
+              speed={10}
+              blur={90}
+              opacity={0.38}
+              size={66}
+            />
+          </div>
 
           <div className="relative z-10 grid gap-6 lg:grid-cols-[1.618fr_1fr] items-end">
             <div>
@@ -76,30 +212,107 @@ function Dashboard() {
                 </ShinyText>
               </p>
               <div className="mt-4 flex items-center gap-2.5 flex-wrap text-white/90">
-                <span className="text-[13px]">您当前英语水平</span>
+                <div className="leading-tight text-center">
+                  <div className="text-[13px]">您当前英语水平</div>
+                  <div className="text-[13px] text-white/80">(CEFR标准)</div>
+                </div>
                 <LevelBadge level={data?.user?.estimatedLevel || 'unknown'} />
-                <span className="text-white/60">|</span>
-                <span className="text-[13px]">目标等级</span>
-                <select
-                  value={targetLevel}
-                  onChange={async (e) => {
-                    const newLevel = e.target.value
-                    const prevLevel = targetLevel
-                    setTargetLevel(newLevel)
-                    try {
-                      await authAPI.setTargetLevel(newLevel)
-                    } catch (err) {
-                      console.error('设置目标等级失败:', err)
-                      setTargetLevel(prevLevel)
-                    }
-                  }}
-                  className="text-[12px] px-2.5 py-1 rounded-lg border border-white/40 bg-white/15 text-white outline-none focus:border-white/60 cursor-pointer"
+                <button
+                  type="button"
+                  onClick={handleResetEvaluation}
+                  disabled={resettingEvaluation}
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-white/40 bg-white/12 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  <option value="none" className="text-surface-800">未设定</option>
-                  <option value="gaokao" className="text-surface-800">高考</option>
-                  <option value="cet4" className="text-surface-800">大学四级 (CET-4)</option>
-                  <option value="cet6" className="text-surface-800">大学六级 (CET-6)</option>
-                </select>
+                  {resettingEvaluation ? '重置中...' : '重新评估'}
+                </button>
+                <span className="text-white/60">|</span>
+                <div className="leading-tight text-center">
+                  <div className="text-[13px]">期望等级</div>
+                  <div className="text-[13px]">参加考试</div>
+                </div>
+                <div
+                  ref={targetMenuRef}
+                  className="relative"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHoverGroup(null)
+                      setTargetMenuOpen((v) => !v)
+                    }}
+                    className="text-[12px] px-2.5 py-1 rounded-lg border border-white/40 bg-white/15 text-white outline-none focus:border-white/60 cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span>{targetDisplayLabel}</span>
+                    <svg className="w-3 h-3 text-white/85" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+
+                  {targetMenuOpen && (
+                    <div className="absolute z-[300] top-full left-0 mt-1">
+                      <div className="relative">
+                        <div className="w-[14rem] rounded-xl border border-surface-200 bg-white/95 text-surface-700 shadow-[0_14px_36px_rgba(17,24,39,0.2)] overflow-hidden">
+                          <div className="bg-surface-50/85 py-1.5">
+                          {menuGroups.map((group) => {
+                            const hasSubmenu = (group.options?.length || 0) > 1
+                            const active = activeHoverGroup === group.group || (!hasSubmenu && targetGroup === group.group)
+                            return (
+                              <button
+                                key={group.group}
+                                type="button"
+                                onMouseEnter={() => setHoverGroup(hasSubmenu ? group.group : null)}
+                                onFocus={() => setHoverGroup(hasSubmenu ? group.group : null)}
+                                onClick={() => {
+                                  if (!hasSubmenu) {
+                                    handleTargetLevelPick(group.group, group.options[0].value)
+                                    return
+                                  }
+                                  setHoverGroup(group.group)
+                                }}
+                                className={`w-full h-[34px] px-3 flex items-center text-left text-[12px] transition-colors ${active ? 'bg-white text-primary-700 font-semibold' : 'text-surface-600 hover:bg-white'}`}
+                              >
+                                {group.label}
+                              </button>
+                            )
+                          })}
+                          </div>
+                        </div>
+
+                        {activeHoverGroup && (
+                          <div
+                            className="absolute left-[calc(100%+0.35rem)] w-[18rem] rounded-xl border border-surface-200 bg-white text-surface-700 shadow-[0_14px_36px_rgba(17,24,39,0.2)] overflow-hidden"
+                            style={{ top: `${submenuTop}px` }}
+                          >
+                            <div className="py-1">
+                              {orderedHoverOptions.map((option, index) => {
+                                const active = option.value === targetLevel
+                                const showMarker = orderedHoverOptions.length > 1
+                                const marker = showMarker
+                                  ? (index === 0 ? '高' : (index === orderedHoverOptions.length - 1 ? '低' : ''))
+                                  : ''
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => handleTargetLevelPick(activeHoverGroup, option.value)}
+                                    className={`w-full h-[34px] px-3 flex items-center justify-between text-left text-[12px] transition-colors ${active ? 'bg-primary-50 text-primary-700 font-semibold' : 'text-surface-700 hover:bg-surface-50'}`}
+                                  >
+                                    <span>{option.label}</span>
+                                    {showMarker && (
+                                      <span className={`ml-3 min-w-[1em] text-right text-[11px] ${active ? 'text-primary-600' : 'text-surface-400'}`}>
+                                        {marker}
+                                      </span>
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -114,10 +327,7 @@ function Dashboard() {
       </AnimatedContent>
 
       <AnimatedContent distance={18} duration={0.45}>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-[1.28rem] font-bold text-surface-800 tracking-tight">学习任务面板</h2>
-          <div className="toc-chip">今日目录</div>
-        </div>
+        <h2 className="text-[1.28rem] font-bold text-surface-800 tracking-tight">学习任务面板</h2>
       </AnimatedContent>
 
       {/* Unfinished Reading Reminder */}
@@ -198,12 +408,13 @@ function Dashboard() {
       <AnimatedContent distance={20} duration={0.5} delay={0.1}>
         <div>
           <h2 className="text-[15px] font-semibold text-surface-800 mb-3">开始学习</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[
               { to: '/import', title: '导入新文章', desc: '粘贴文章开始阅读', icon: <ImportActionIcon />, primary: true },
               { to: '/library', title: '文库', desc: `${data?.articles?.completed || 0} 篇已读`, icon: <LibraryActionIcon /> },
               { to: '/vocabulary', title: '生词本', desc: `${data?.vocab?.active || 0} 个生词`, icon: <VocabActionIcon /> },
               { to: '/progress', title: '学习进度', desc: '水平变化趋势', icon: <ChartActionIcon /> },
+              { to: '/level-compare', title: '水平对比总表', desc: 'CEFR与考试对照', icon: <CompareActionIcon /> },
             ].map(({ to, title, desc, icon, primary }) => (
               <Link key={to} to={to}>
                 <Card hover className={`text-center group ${primary ? '!border-primary-200/80' : ''}`}>
@@ -306,6 +517,9 @@ function VocabActionIcon() {
 }
 function ChartActionIcon() {
   return <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+}
+function CompareActionIcon() {
+  return <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h7.5M3.75 9.75h7.5m-7.5 4.5h7.5m4.5-9v13.5m0 0l-3-3m3 3l3-3" /></svg>
 }
 
 export default Dashboard

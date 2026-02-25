@@ -143,7 +143,11 @@ function generateSessionReport(userId, article, articleId, stats, isReread) {
 
   // 评估用户水平
   const recentSessions = db.prepare(`
-    SELECT * FROM reading_sessions WHERE user_id = ?
+    SELECT rs.*
+    FROM reading_sessions rs
+    LEFT JOIN users u ON u.id = rs.user_id
+    WHERE rs.user_id = ?
+      AND (u.level_reset_at IS NULL OR rs.created_at >= u.level_reset_at)
     ORDER BY created_at DESC LIMIT 10
   `).all(userId);
 
